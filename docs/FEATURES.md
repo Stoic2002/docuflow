@@ -137,6 +137,8 @@ Original tidak pernah ditimpa; hasilnya selalu menjadi versi baru.
 
 `GET /api/fonts` menampilkan font TrueType yang dapat di-embed. Backend memindai direktori `FONT_DIR` (default `assets/fonts`) saat start.
 
+Repo ini sudah menyertakan 15 font berlisensi SIL OFL 1.1: **Liberation Sans, Serif, dan Mono** lengkap dengan gaya tebal dan miringnya, ditambah **Inter** Regular/Bold/Italic. Keluarga Liberation dipilih karena metriknya kompatibel dengan Arial, Times New Roman, dan Courier New — lebar tiap karakternya sama persis, sehingga teks pengganti pada alur cover & retype menempati ruang yang sama dengan teks aslinya dan tata letak halaman tidak bergeser.
+
 - Hanya `.ttf` berbasis `glyf`; `.ttc` dan `.otf` CFF ditolak.
 - Bit `fsType` pada tabel OS/2 dibaca, dan font yang vendornya melarang embedding ditolak. Ini membaca niat vendor, bukan pengganti membaca lisensinya.
 - Font di-embed sebagai `CIDFontType2` dengan encoding `Identity-H` dan CMap `ToUnicode`, sehingga teks hasilnya tetap dapat diseleksi dan dicari.
@@ -144,7 +146,9 @@ Original tidak pernah ditimpa; hasilnya selalu menjadi versi baru.
 - Direktori kosong bukan error. Editor tetap jalan dengan Helvetica bawaan PDF, yang tidak perlu di-embed tetapi hanya mencakup Latin-1.
 - File yang ditolak dilaporkan pada field `issues`, bukan dibuang diam-diam.
 
-Belum didukung: synthetic bold/italic (sediakan file terpisah), serta shaping untuk aksara yang membutuhkannya seperti Arab, Thai, dan Devanagari. Latin dan Bahasa Indonesia sudah benar.
+Karena keluarga bawaan lengkap dengan gaya tebal dan miringnya, tombol Tebal dan Miring di editor **memakai font aslinya** dan hanya mensintesis efek bila keluarga font yang dipilih tidak menyediakannya.
+
+Belum didukung: shaping untuk aksara yang membutuhkannya seperti Arab, Thai, dan Devanagari. Latin dan Bahasa Indonesia sudah benar.
 
 ### Font yang sudah ada di dokumen
 

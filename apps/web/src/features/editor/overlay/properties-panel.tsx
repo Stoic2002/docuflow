@@ -5,6 +5,7 @@ import {
   Bold, Copy, Italic, Strikethrough, Underline,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { effectiveStyle, toggleEmphasis } from "./font-variants";
 import { fontStack, overflowsCover } from "./geometry";
 import { useOverlayStore } from "./store";
 import { MAX_TEXT_LENGTH, type OverlayObject, isBox, isPath } from "./types";
@@ -87,6 +88,11 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
   }
 
   const patch = (values: Partial<OverlayObject>) => update(selected.id, values);
+  // Emphasis can come from the chosen face or from a synthesised flag; the
+  // toggles reflect whichever is in play.
+  const emphasis = selected.kind === "text"
+    ? effectiveStyle(selected, fonts)
+    : { bold: false, italic: false };
   return (
     <>
       <PanelSection title="Properti" aside={<Badge>{labelFor(selected)}</Badge>}>
@@ -120,8 +126,20 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
             </Field>
             <FontSizeField value={selected.fontSize} onChange={(fontSize) => patch({ fontSize })} />
             <ToggleGroup label="Gaya">
-              <Toggle label="Tebal" hint="Ditebalkan secara sintetis, bukan diganti dengan font bold sungguhan." icon={Bold} active={Boolean(selected.bold)} onClick={() => patch({ bold: !selected.bold })} />
-              <Toggle label="Miring" hint="Dimiringkan secara sintetis, bukan diganti dengan font italic sungguhan." icon={Italic} active={Boolean(selected.italic)} onClick={() => patch({ italic: !selected.italic })} />
+              <Toggle
+                label="Tebal"
+                hint={emphasis.bold ? undefined : "Memakai font bold keluarga ini bila tersedia; kalau tidak, ditebalkan secara sintetis."}
+                icon={Bold}
+                active={emphasis.bold}
+                onClick={() => patch(toggleEmphasis(selected, fonts, "bold"))}
+              />
+              <Toggle
+                label="Miring"
+                hint={emphasis.italic ? undefined : "Memakai font italic keluarga ini bila tersedia; kalau tidak, dimiringkan secara sintetis."}
+                icon={Italic}
+                active={emphasis.italic}
+                onClick={() => patch(toggleEmphasis(selected, fonts, "italic"))}
+              />
               <Toggle label="Garis bawah" icon={Underline} active={Boolean(selected.underline)} onClick={() => patch({ underline: !selected.underline })} />
               <Toggle label="Coret" icon={Strikethrough} active={Boolean(selected.strikethrough)} onClick={() => patch({ strikethrough: !selected.strikethrough })} />
             </ToggleGroup>
