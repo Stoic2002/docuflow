@@ -1,0 +1,22 @@
+.DS_Store
+.env
+.env.local
+*.log
+
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Generated at runtime. Keep directory placeholders below.
+data/originals/*
+data/versions/*
+data/outputs/*
+data/thumbnails/*
+data/temporary/*
+!data/originals/.gitkeep
+!data/versions/.gitkeep
+!data/outputs/.gitkeep
+!data/thumbnails/.gitkeep
+!data/temporary/.gitkeep

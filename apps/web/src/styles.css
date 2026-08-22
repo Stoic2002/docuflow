@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f4f1eb;
+  --color-paper: #fffdf8;
+  --color-ink: #171713;
+  --color-muted: #6f6b64;
+  --color-line: #d7d1c8;
+  --color-accent: #ff2d2d;
+  --color-accent-soft: #ffe4df;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+:root {
+  color: #171713;
+  background: #f4f1eb;
+  font-family: "Helvetica Neue", Helvetica, Arial, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 8% 4%, rgb(255 45 45 / 7%), transparent 24rem),
+    #f4f1eb;
+}
+
+h1,
+h2,
+h3,
+p {
+  text-wrap: pretty;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+input,
+select {
+  outline-offset: 2px;
+}
+
+::selection {
+  color: #171713;
+  background: #ffb4a8;
+}
+
+.display-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.eyebrow {
+  color: #ff2d2d;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.page-shell {
+  margin-inline: auto;
+  width: min(100% - 2rem, 80rem);
+}
+
+.dashed-rule {
+  border-top: 1px dashed #c6bfb4;
+}
+
+.form-control {
+  min-height: 2.75rem;
+  width: 100%;
+  border: 1px solid #bdb6ab;
+  border-radius: 0.9rem;
+  background: #fffdf8;
+  padding-inline: 0.875rem;
+  color: #171713;
+}
+
+.form-control:focus-visible {
+  border-color: #ff2d2d;
+  outline: 2px solid rgb(255 45 45 / 24%);
+  outline-offset: 2px;
+}
