@@ -57,6 +57,8 @@ function pushHistory(past: OverlayObject[][], objects: OverlayObject[]): Overlay
 export const useOverlayStore = create<OverlayState>((set, get) => ({
   ...empty,
 
+  // Switching away from Select clears the selection so a drawing tool never
+  // acts on a stale object; switching back keeps whatever is selected.
   setTool: (tool) => set({ tool, selectedId: tool === "select" ? get().selectedId : null }),
   select: (selectedId) => set({ selectedId }),
 

@@ -1,5 +1,5 @@
 import { Button, Tooltip } from "@pdf-studio/ui";
-import { Circle, ImagePlus, Minus, MousePointer2, Pencil, Redo2, Replace, Square, Trash2, Type, Undo2 } from "lucide-react";
+import { Circle, ImagePlus, Minus, MousePointer2, Pencil, Redo2, Replace, Square, Table2, Trash2, Type, Undo2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useRef } from "react";
 import { useOverlayStore } from "./store";
@@ -13,6 +13,7 @@ const tools: { tool: OverlayTool; label: string; icon: LucideIcon }[] = [
   { tool: "line", label: "Garis", icon: Minus },
   { tool: "draw", label: "Gambar bebas", icon: Pencil },
   { tool: "retype", label: "Ganti teks asli", icon: Replace },
+  { tool: "rules", label: "Garis & tabel", icon: Table2 },
 ];
 
 export function EditorToolbar({ onPickImage, disabled }: { onPickImage: (file: File) => void; disabled: boolean }) {

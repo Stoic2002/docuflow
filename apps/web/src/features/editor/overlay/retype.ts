@@ -1,5 +1,5 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
-import type { PdfTextRun } from "@pdf-studio/pdf-engine";
+import type { PdfTextRun, PdfVectorRule } from "@pdf-studio/pdf-engine";
 
 /**
  * Cover and retype: the only way to change words already in a PDF without a
@@ -162,4 +162,57 @@ export function inkColorFor(
   // A run that never differs from its background has no ink to copy.
   if (!best || bestDistance < 40) return "#111111";
   return `#${toHex(best[0])}${toHex(best[1])}${toHex(best[2])}`;
+}
+
+/**
+ * Patch box for a rule. A rule is thin, so the box is its own thickness plus a
+ * little bleed; the replacement line is then drawn along the same axis.
+ */
+export function ruleCoverBox(rule: PdfVectorRule, padding = COVER_PADDING): CoverBox {
+  const half = Math.max(rule.thickness, 0.5) / 2 + padding;
+  if (rule.orientation === "horizontal") {
+    return {
+      x: rule.x1 - padding,
+      y: rule.y1 - half,
+      width: rule.x2 - rule.x1 + padding * 2,
+      height: half * 2,
+      rotation: 0,
+    };
+  }
+  return {
+    x: rule.x1 - half,
+    y: rule.y1 - padding,
+    width: half * 2,
+    height: rule.y2 - rule.y1 + padding * 2,
+    rotation: 0,
+  };
+}
+
+/**
+ * Groups rules into the grids they form, so the UI can say "3 tabel" rather
+ * than "48 garis". Two rules belong together when they cross or nearly touch.
+ */
+export function countTableGrids(rules: PdfVectorRule[], tolerance = 4): number {
+  const horizontal = rules.filter((rule) => rule.orientation === "horizontal");
+  const vertical = rules.filter((rule) => rule.orientation === "vertical");
+  let grids = 0;
+  const used = new Set<PdfVectorRule>();
+  for (const across of horizontal) {
+    if (used.has(across)) continue;
+    const crossing = vertical.filter(
+      (down) =>
+        down.x1 >= across.x1 - tolerance &&
+        down.x1 <= across.x2 + tolerance &&
+        across.y1 >= down.y1 - tolerance &&
+        across.y1 <= down.y2 + tolerance,
+    );
+    // A table needs at least two verticals bounding a row.
+    if (crossing.length < 2) continue;
+    grids += 1;
+    for (const other of horizontal) {
+      const sharesSpan = other.x1 <= across.x2 + tolerance && other.x2 >= across.x1 - tolerance;
+      if (sharesSpan) used.add(other);
+    }
+  }
+  return grids;
 }

@@ -19,6 +19,21 @@ export interface PdfEngine {
 export type PdfPageSize = { width: number; height: number };
 
 /**
+ * A horizontal or vertical rule already drawn on the page: a table border, an
+ * underline, a separator. Diagonal strokes and curves are ignored because the
+ * editor can only offer a straight replacement for them.
+ */
+export type PdfVectorRule = {
+  orientation: "horizontal" | "vertical";
+  /** Endpoints in PDF user space, ordered left-to-right or bottom-to-top. */
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  thickness: number;
+};
+
+/**
  * One run of text already on the page, positioned in PDF user space. The
  * cover-and-retype flow uses it to place a patch exactly over existing words.
  */
@@ -47,6 +62,8 @@ export interface ViewablePdfEngine extends PdfEngine {
   renderPageAtScale(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Promise<void>;
   /** Text already on the page, positioned in PDF user space. */
   getTextRuns(pageNumber: number): Promise<PdfTextRun[]>;
+  /** Straight rules already drawn on the page, in PDF user space. */
+  getVectorRules(pageNumber: number): Promise<PdfVectorRule[]>;
 }
 
 /**
@@ -168,6 +185,27 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
     return runs;
   }
 
+  /**
+   * Walks the page's operator list and collects straight rules. Coordinates in
+   * that list are in unrotated user space with the MediaBox origin at zero, so
+   * a page that is rotated or whose box is offset is reported as having none
+   * rather than silently returning rules in the wrong place.
+   */
+  async getVectorRules(pageNumber: number): Promise<PdfVectorRule[]> {
+    if (!this.document) return [];
+    const page = await this.document.getPage(pageNumber);
+    const [boxX, boxY] = page.view;
+    if (page.rotate % 360 !== 0 || boxX !== 0 || boxY !== 0) return [];
+    const pdfjs = await import("pdfjs-dist");
+    const { OPS } = pdfjs;
+    const list = await page.getOperatorList();
+    const collector = new RuleCollector(OPS);
+    for (let index = 0; index < list.fnArray.length; index += 1) {
+      collector.step(list.fnArray[index], list.argsArray[index]);
+    }
+    return collector.rules();
+  }
+
   async renderPageAtScale(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Promise<void> {
     if (!this.document) throw new Error("PDF structure is unavailable");
     const page = await this.document.getPage(pageNumber);
@@ -214,4 +252,176 @@ export function createPdfEngine(provider: PdfEngineProvider = "fallback"): PdfEn
   if (provider === "fallback") return new FallbackViewerEngine();
   if (provider === "overlay") return new OverlayEditorEngine();
   throw new Error(`${provider} is not configured; use the fallback viewer`);
+}
+
+type Matrix = [number, number, number, number, number, number];
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+function apply(matrix: Matrix, x: number, y: number): [number, number] {
+  return [matrix[0] * x + matrix[2] * y + matrix[4], matrix[1] * x + matrix[3] * y + matrix[5]];
+}
+
+function multiply(outer: Matrix, inner: Matrix): Matrix {
+  return [
+    outer[0] * inner[0] + outer[2] * inner[1],
+    outer[1] * inner[0] + outer[3] * inner[1],
+    outer[0] * inner[2] + outer[2] * inner[3],
+    outer[1] * inner[2] + outer[3] * inner[3],
+    outer[0] * inner[4] + outer[2] * inner[5] + outer[4],
+    outer[1] * inner[4] + outer[3] * inner[5] + outer[5],
+  ];
+}
+
+/** A stroke or bar thinner than this reads as a rule rather than a filled box. */
+const MAX_RULE_THICKNESS = 4;
+/** Shorter marks are decoration or glyph artefacts, not separators. */
+const MIN_RULE_LENGTH = 8;
+/** How far an endpoint may drift and still count as axis aligned. */
+const AXIS_TOLERANCE = 0.6;
+
+/** The operator identifiers RuleCollector needs, kept minimal so it can be tested with a stub. */
+export type PathOps = {
+  save: number;
+  restore: number;
+  transform: number;
+  setLineWidth: number;
+  constructPath: number;
+  moveTo: number;
+  lineTo: number;
+  curveTo: number;
+  curveTo2: number;
+  curveTo3: number;
+  closePath: number;
+  rectangle: number;
+};
+
+/**
+ * Interprets the path-building operators of one page. Only the transform stack
+ * and path geometry are tracked; paint colour is read from the rendered page
+ * instead, which is far simpler than following the colour-space operators.
+ */
+export class RuleCollector {
+  private stack: Matrix[] = [];
+  private matrix: Matrix = IDENTITY;
+  private lineWidth = 1;
+  private found: PdfVectorRule[] = [];
+
+  constructor(private readonly ops: PathOps) {}
+
+  step(fn: number, args: unknown[]): void {
+    if (fn === this.ops.save) {
+      this.stack.push(this.matrix);
+      return;
+    }
+    if (fn === this.ops.restore) {
+      this.matrix = this.stack.pop() ?? IDENTITY;
+      return;
+    }
+    if (fn === this.ops.transform) {
+      this.matrix = multiply(this.matrix, args as unknown as Matrix);
+      return;
+    }
+    if (fn === this.ops.setLineWidth) {
+      this.lineWidth = Number(args[0]) || 1;
+      return;
+    }
+    if (fn === this.ops.constructPath) {
+      this.path(args[0] as number[], args[1] as number[]);
+    }
+  }
+
+  private scale(): number {
+    // Average of the axis scales; rules are almost always axis aligned anyway.
+    const x = Math.hypot(this.matrix[0], this.matrix[1]);
+    const y = Math.hypot(this.matrix[2], this.matrix[3]);
+    return (x + y) / 2 || 1;
+  }
+
+  private path(operations: number[], coordinates: number[]): void {
+    if (!Array.isArray(operations) || !Array.isArray(coordinates)) return;
+    let cursor = 0;
+    let current: [number, number] | null = null;
+    let start: [number, number] | null = null;
+    const strokeWidth = Math.max(this.lineWidth * this.scale(), 0.1);
+    for (const operation of operations) {
+      if (operation === this.ops.moveTo) {
+        current = apply(this.matrix, coordinates[cursor], coordinates[cursor + 1]);
+        start = current;
+        cursor += 2;
+      } else if (operation === this.ops.lineTo) {
+        const next = apply(this.matrix, coordinates[cursor], coordinates[cursor + 1]);
+        cursor += 2;
+        if (current) this.segment(current, next, strokeWidth);
+        current = next;
+      } else if (operation === this.ops.curveTo) {
+        cursor += 6;
+        current = apply(this.matrix, coordinates[cursor - 2], coordinates[cursor - 1]);
+      } else if (operation === this.ops.curveTo2 || operation === this.ops.curveTo3) {
+        cursor += 4;
+        current = apply(this.matrix, coordinates[cursor - 2], coordinates[cursor - 1]);
+      } else if (operation === this.ops.closePath) {
+        if (current && start) this.segment(current, start, strokeWidth);
+        current = start;
+      } else if (operation === this.ops.rectangle) {
+        const [x, y, width, height] = coordinates.slice(cursor, cursor + 4);
+        cursor += 4;
+        this.rectangle(x, y, width, height);
+      }
+    }
+  }
+
+  private segment(from: [number, number], to: [number, number], thickness: number): void {
+    const deltaX = to[0] - from[0];
+    const deltaY = to[1] - from[1];
+    if (Math.abs(deltaY) <= AXIS_TOLERANCE && Math.abs(deltaX) >= MIN_RULE_LENGTH) {
+      const [left, right] = from[0] <= to[0] ? [from, to] : [to, from];
+      this.found.push({ orientation: "horizontal", x1: left[0], y1: left[1], x2: right[0], y2: right[1], thickness });
+      return;
+    }
+    if (Math.abs(deltaX) <= AXIS_TOLERANCE && Math.abs(deltaY) >= MIN_RULE_LENGTH) {
+      const [low, high] = from[1] <= to[1] ? [from, to] : [to, from];
+      this.found.push({ orientation: "vertical", x1: low[0], y1: low[1], x2: high[0], y2: high[1], thickness });
+    }
+  }
+
+  /** Table borders are often thin filled rectangles rather than strokes. */
+  private rectangle(x: number, y: number, width: number, height: number): void {
+    const corners: [number, number][] = [
+      apply(this.matrix, x, y),
+      apply(this.matrix, x + width, y),
+      apply(this.matrix, x + width, y + height),
+      apply(this.matrix, x, y + height),
+    ];
+    const xs = corners.map((corner) => corner[0]);
+    const ys = corners.map((corner) => corner[1]);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const bottom = Math.min(...ys);
+    const top = Math.max(...ys);
+    const boxWidth = right - left;
+    const boxHeight = top - bottom;
+    if (boxHeight <= MAX_RULE_THICKNESS && boxWidth >= MIN_RULE_LENGTH) {
+      const middle = (bottom + top) / 2;
+      this.found.push({ orientation: "horizontal", x1: left, y1: middle, x2: right, y2: middle, thickness: Math.max(boxHeight, 0.1) });
+      return;
+    }
+    if (boxWidth <= MAX_RULE_THICKNESS && boxHeight >= MIN_RULE_LENGTH) {
+      const middle = (left + right) / 2;
+      this.found.push({ orientation: "vertical", x1: middle, y1: bottom, x2: middle, y2: top, thickness: Math.max(boxWidth, 0.1) });
+    }
+  }
+
+  /** Drops duplicates, which stroked-then-filled paths produce in pairs. */
+  rules(): PdfVectorRule[] {
+    const seen = new Set<string>();
+    return this.found.filter((rule) => {
+      const key = [rule.orientation, rule.x1, rule.y1, rule.x2, rule.y2]
+        .map((value) => (typeof value === "number" ? value.toFixed(1) : value))
+        .join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
 }

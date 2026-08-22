@@ -13,7 +13,8 @@ export type OverlayTool =
   | "line"
   | "draw"
   | "image"
-  | "retype";
+  | "retype"
+  | "rules";
 
 export type TextAlign = "left" | "center" | "right";
 

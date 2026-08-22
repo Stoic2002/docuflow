@@ -61,12 +61,13 @@ Yang sudah tersedia tanpa SDK komersial adalah **overlay editing** — menambahk
 
 Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atasnya. Tersedia:
 
-- tool Pilih, Teks, Kotak, Elips, Garis, Gambar bebas, Sisipkan JPG, dan Ganti teks asli;
+- tool Pilih, Teks, Kotak, Elips, Garis, Gambar bebas, Sisipkan JPG, Ganti teks asli, dan Garis & tabel;
 - geser objek dengan tool Pilih;
 - panel Properti untuk warna, isi, ketebalan garis, ukuran teks, font, perataan, opacity, dan rotasi;
 - undo/redo, hapus objek terpilih, navigasi halaman, dan zoom;
 - pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi;
 - zoom dengan cubit dua jari di trackpad atau `Ctrl` + scroll, yang memperbesar ke titik kursor; usap dua jari biasa tetap menggulung halaman.
+- setelah memakai Ganti teks asli atau Garis & tabel, editor otomatis kembali ke tool Pilih dengan objek barunya sudah terpilih.
 
 Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
 
@@ -88,7 +89,27 @@ Teks itu kemudian tinggal diedit di panel Properti. Penutup dan teks penggantiny
 - Halaman hasil scan tidak punya teks yang bisa dipilih. Jalankan Searchable OCR lebih dulu.
 - Teks pengganti tidak mengalir ulang. Kalau teks baru lebih panjang, ia akan melewati batas teks lama.
 
+Setelah teks diganti, editor otomatis berpindah ke tool Pilih dan teks penggantinya sudah terpilih — jadi langsung bisa diedit isinya di panel Properti dan digeser posisinya di kanvas.
+
 Untuk mengubah teks berikut reflow paragrafnya, tetap dibutuhkan SDK komersial.
+
+### Garis & tabel
+
+Tool **Garis & tabel** membaca operator grafis halaman dan mengenali garis lurus yang sudah ada: pembatas tabel, garis bawah, dan pemisah. Klik salah satunya, dan garis itu ditutup lalu digantikan objek garis baru yang bisa digeser, diubah warna dan ketebalannya, atau dihapus.
+
+Yang dikenali:
+
+- goresan mendatar dan tegak sepanjang minimal 8 pt;
+- persegi panjang tipis (≤ 4 pt), karena banyak tabel menggambar pembatasnya sebagai kotak terisi, bukan garis;
+- jumlah tabel dilaporkan dengan mengelompokkan garis yang saling berpotongan.
+
+Yang **tidak** dikenali:
+
+- garis diagonal dan kurva, karena editor hanya bisa menawarkan garis lurus sebagai penggantinya;
+- garis pada halaman hasil scan, karena itu piksel gambar dan bukan vektor;
+- halaman dengan MediaBox tidak dimulai dari titik nol atau punya rotasi — deteksi dilewati dan melaporkan nol garis, alih-alih menempatkan garis di posisi yang salah.
+
+Tabel dikenali sebagai kumpulan garisnya, bukan sebagai satu objek dengan baris dan kolom. Mengedit isi selnya dilakukan lewat tool Ganti teks asli.
 
 ## Objek overlay
 

@@ -1,9 +1,9 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
-import type { PdfTextRun, ViewablePdfEngine } from "@pdf-studio/pdf-engine";
+import type { PdfTextRun, PdfVectorRule, ViewablePdfEngine } from "@pdf-studio/pdf-engine";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flipY } from "./geometry";
 import { ObjectLayer } from "./object-layer";
-import { analyzeBackground, coverBoxFor, inkColorFor, matchFont, pickableRuns } from "./retype";
+import { analyzeBackground, countTableGrids, coverBoxFor, inkColorFor, matchFont, pickableRuns, ruleCoverBox, type CoverBox } from "./retype";
 import { hitTest, objectsOnPage, useOverlayStore } from "./store";
 import {
   DEFAULT_FONT_SIZE,
@@ -47,6 +47,7 @@ export function EditorCanvas({
   // The last completed render, kept so retype can read the pixels behind a run.
   const bufferRef = useRef<HTMLCanvasElement>(null);
   const [runs, setRuns] = useState<PdfTextRun[]>([]);
+  const [rules, setRules] = useState<PdfVectorRule[]>([]);
   const [gesture, setGesture] = useState<Gesture>({ mode: "idle" });
   const [draft, setDraft] = useState<OverlayObject | null>(null);
   const objects = useOverlayStore((state) => state.objects);
@@ -55,6 +56,7 @@ export function EditorCanvas({
   const select = useOverlayStore((state) => state.select);
   const add = useOverlayStore((state) => state.add);
   const addMany = useOverlayStore((state) => state.addMany);
+  const setTool = useOverlayStore((state) => state.setTool);
   const move = useOverlayStore((state) => state.move);
   const commit = useOverlayStore((state) => state.commit);
 
@@ -107,35 +109,89 @@ export function EditorCanvas({
     };
   }, [engine, page, tool, onNotice]);
 
-  const replaceRun = useCallback((run: PdfTextRun) => {
+  useEffect(() => {
+    if (tool !== "rules") {
+      setRules([]);
+      return;
+    }
+    let active = true;
+    void engine.getVectorRules(page).then((found) => {
+      if (!active) return;
+      setRules(found);
+      const grids = countTableGrids(found);
+      onNotice(
+        found.length === 0
+          ? "Tidak ada garis lurus yang terdeteksi di halaman ini. Garis pada halaman hasil scan adalah gambar, bukan vektor, jadi tidak dapat dikenali."
+          : `${found.length} garis terdeteksi${grids > 0 ? `, membentuk ${grids} tabel` : ""}. Klik salah satunya untuk menggantinya.`,
+      );
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [engine, page, tool, onNotice]);
+
+  /**
+   * Reads the page pixels behind a patch: the surrounding background colour,
+   * whether that background is flat, and the ink colour of what is being
+   * covered. Shared by the text and rule pickers.
+   */
+  const sampleRegion = useCallback((box: CoverBox) => {
     const buffer = bufferRef.current;
     const context = buffer?.getContext("2d", { willReadFrequently: true });
-    const box = coverBoxFor(run);
-    // The buffer is the page rendered at some density; one factor maps both axes.
-    const factor = buffer ? buffer.width / pageWidth : 1;
-    let background = "#ffffff";
-    let ink = "#111111";
-    let uniform = false;
-    if (buffer && context) {
-      const margin = Math.ceil(8 * factor);
-      const left = Math.max(0, Math.floor(box.x * factor) - margin);
-      const top = Math.max(0, Math.floor(flipY(box.y + box.height, pageHeight) * factor) - margin);
-      const width = Math.min(buffer.width - left, Math.ceil(box.width * factor) + margin * 2);
-      const height = Math.min(buffer.height - top, Math.ceil(box.height * factor) + margin * 2);
-      if (width > 0 && height > 0) {
-        const region = context.getImageData(left, top, width, height);
-        const local = {
-          x: box.x * factor - left,
-          y: flipY(box.y + box.height, pageHeight) * factor - top,
-          width: box.width * factor,
-          height: box.height * factor,
-        };
-        const sample = analyzeBackground(region.data, width, height, local, Math.max(2, Math.round(factor * 2)));
-        background = sample.color;
-        uniform = sample.uniform;
-        ink = inkColorFor(region.data, width, height, local, background);
-      }
+    const fallback = { background: "#ffffff", ink: "#111111", uniform: false };
+    if (!buffer || !context) return fallback;
+    const factor = buffer.width / pageWidth;
+    const margin = Math.ceil(8 * factor);
+    const left = Math.max(0, Math.floor(box.x * factor) - margin);
+    const top = Math.max(0, Math.floor(flipY(box.y + box.height, pageHeight) * factor) - margin);
+    const width = Math.min(buffer.width - left, Math.ceil(box.width * factor) + margin * 2);
+    const height = Math.min(buffer.height - top, Math.ceil(box.height * factor) + margin * 2);
+    if (width <= 0 || height <= 0) return fallback;
+    const region = context.getImageData(left, top, width, height);
+    const local = {
+      x: box.x * factor - left,
+      y: flipY(box.y + box.height, pageHeight) * factor - top,
+      width: box.width * factor,
+      height: box.height * factor,
+    };
+    const sample = analyzeBackground(region.data, width, height, local, Math.max(2, Math.round(factor * 2)));
+    return {
+      background: sample.color,
+      uniform: sample.uniform,
+      ink: inkColorFor(region.data, width, height, local, sample.color),
+    };
+  }, [pageHeight, pageWidth]);
+
+  const replaceRule = useCallback((rule: PdfVectorRule) => {
+    const box = ruleCoverBox(rule);
+    const { background, ink, uniform } = sampleRegion(box);
+    const added = addMany([
+      {
+        id: crypto.randomUUID(), kind: "rectangle", page,
+        x: box.x, y: box.y, width: box.width, height: box.height,
+        stroke: background, strokeWidth: 0, fill: background,
+        opacity: 1, rotation: 0,
+      },
+      {
+        id: crypto.randomUUID(), kind: "line", page,
+        points: [{ x: rule.x1, y: rule.y1 }, { x: rule.x2, y: rule.y2 }],
+        stroke: ink, strokeWidth: Math.max(rule.thickness, 0.5),
+        opacity: 1, rotation: 0,
+      },
+    ]);
+    if (added) {
+      setTool("select");
+      onNotice(
+        uniform
+          ? "Garis ini sekarang bisa digeser, diubah warnanya, atau dihapus lewat panel Properti."
+          : "Latar di sekitar garis ini tidak rata, jadi tambalannya akan terlihat. Periksa hasilnya sebelum menyimpan.",
+      );
     }
+  }, [addMany, onNotice, page, sampleRegion, setTool]);
+
+  const replaceRun = useCallback((run: PdfTextRun) => {
+    const box = coverBoxFor(run);
+    const { background, ink, uniform } = sampleRegion(box);
     const added = addMany([
       {
         id: crypto.randomUUID(), kind: "rectangle", page,
@@ -152,13 +208,16 @@ export function EditorCanvas({
       },
     ]);
     if (added) {
+      // Hand the user straight to Select: the replacement is already the
+      // selected object, so it can be retyped in the panel and dragged at once.
+      setTool("select");
       onNotice(
         uniform
           ? null
           : "Latar di belakang teks ini tidak rata, jadi tambalannya akan terlihat. Periksa hasilnya sebelum menyimpan.",
       );
     }
-  }, [addMany, fonts, onNotice, page, pageHeight, pageWidth]);
+  }, [addMany, fonts, onNotice, page, sampleRegion, setTool]);
 
   const toPdf = useCallback(
     (clientX: number, clientY: number): OverlayPoint => {
@@ -189,6 +248,10 @@ export function EditorCanvas({
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // Retype picks are handled by the hotspots themselves. Capturing the
+    // pointer here would retarget pointerup to this element and stop the
+    // browser from ever synthesising a click on the hotspot.
+    if (tool === "retype" || tool === "rules") return;
     const point = toPdf(event.clientX, event.clientY);
     event.currentTarget.setPointerCapture(event.pointerId);
     if (tool === "select") {
@@ -199,7 +262,6 @@ export function EditorCanvas({
       if (hit) setGesture({ mode: "move", id: hit.id, last: point, moved: false });
       return;
     }
-    if (tool === "retype") return;
     if (tool === "text") {
       add({
         id: crypto.randomUUID(), kind: "text", page, text: "Teks baru",
@@ -245,7 +307,9 @@ export function EditorCanvas({
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     if (gesture.mode === "create" && draft) {
       if (isLargeEnough(draft)) add(draft);
     }
@@ -253,7 +317,8 @@ export function EditorCanvas({
     setGesture({ mode: "idle" });
   };
 
-  const cursor = tool === "select" ? "default" : tool === "retype" ? "pointer" : "crosshair";
+  const picking = tool === "retype" || tool === "rules";
+  const cursor = tool === "select" ? "default" : picking ? "pointer" : "crosshair";
   return (
     <div className="relative inline-block shadow-[0_1px_0_rgba(0,0,0,.08)]" style={{ width: pageWidth * scale, height: pageHeight * scale }}>
       <canvas ref={canvasRef} className="block bg-white" />
@@ -277,28 +342,37 @@ export function EditorCanvas({
           fonts={fonts}
           draft={draft}
         />
-        {tool === "retype" ? (
+        {picking ? (
           <svg
             viewBox={`0 0 ${pageWidth} ${pageHeight}`}
             width={pageWidth * scale}
             height={pageHeight * scale}
             className="absolute left-0 top-0"
           >
-            {runs.map((run, index) => {
-              const box = coverBoxFor(run);
+            {(tool === "retype" ? runs : rules).map((target, index) => {
+              const isRun = "text" in target;
+              const box = isRun ? coverBoxFor(target) : ruleCoverBox(target);
+              // A hairline rule needs a taller target than its own thickness.
+              const height = isRun ? box.height : Math.max(box.height, 6 / scale);
+              const width = isRun ? box.width : Math.max(box.width, 6 / scale);
               return (
                 <rect
-                  key={`${index}-${run.x}-${run.y}`}
-                  x={box.x}
-                  y={flipY(box.y + box.height, pageHeight)}
-                  width={box.width}
-                  height={box.height}
+                  key={`${index}-${box.x}-${box.y}`}
+                  x={box.x - (width - box.width) / 2}
+                  y={flipY(box.y + box.height, pageHeight) - (height - box.height) / 2}
+                  width={width}
+                  height={height}
                   transform={box.rotation ? `rotate(${-box.rotation} ${box.x + box.width / 2} ${flipY(box.y + box.height / 2, pageHeight)})` : undefined}
                   className="cursor-pointer fill-[#2563eb]/10 stroke-[#2563eb]/60 hover:fill-[#2563eb]/25"
                   strokeWidth={0.5 / scale}
-                  onClick={() => replaceRun(run)}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    if (isRun) replaceRun(target);
+                    else replaceRule(target);
+                  }}
                 >
-                  <title>{`Ganti teks: ${run.text}`}</title>
+                  <title>{isRun ? `Ganti teks: ${target.text}` : `Ganti garis ${target.orientation === "horizontal" ? "mendatar" : "tegak"}`}</title>
                 </rect>
               );
             })}

@@ -36,6 +36,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const [result, setResult] = useState<DirectToolResult>();
   const [notice, setNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const detachWheel = useRef<(() => void) | null>(null);
 
   const page = useEditorStore((state) => state.selectedPage);
   const setPage = useEditorStore((state) => state.setSelectedPage);
@@ -127,8 +128,13 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   zoomRef.current = zoom;
   const zoomAnchor = useRef<{ x: number; y: number; factor: number } | null>(null);
 
-  useEffect(() => {
-    const container = scrollRef.current;
+  // A callback ref, not an effect: this component returns early while the
+  // session loads, so an effect keyed on stable deps would run once against a
+  // ref that is still null and never fire again once the container mounts.
+  const attachScroll = useCallback((container: HTMLDivElement | null) => {
+    detachWheel.current?.();
+    detachWheel.current = null;
+    scrollRef.current = container;
     if (!container) return;
     const onWheel = (event: WheelEvent) => {
       // A plain two-finger swipe keeps scrolling the page; only a pinch zooms.
@@ -147,8 +153,10 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
       setZoom(next);
     };
     container.addEventListener("wheel", onWheel, { passive: false });
-    return () => container.removeEventListener("wheel", onWheel);
+    detachWheel.current = () => container.removeEventListener("wheel", onWheel);
   }, [setZoom]);
+
+  useEffect(() => () => detachWheel.current?.(), []);
 
   // Keep whatever sat under the cursor in place once the new size is laid out.
   useLayoutEffect(() => {
@@ -235,13 +243,18 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         <div className="space-y-3">
           <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} />
           {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
+          {tool === "rules" ? (
+            <p className="text-xs leading-5 text-muted">
+              Docuflow membaca garis vektor pada halaman — pembatas tabel, garis bawah, dan pemisah. Klik salah satunya untuk menutupnya lalu menggantinya dengan garis baru yang bisa digeser, diubah warnanya, atau dihapus. Tabel dikenali sebagai kumpulan garisnya, bukan sebagai satu objek utuh.
+            </p>
+          ) : null}
           {tool === "retype" ? (
             <p className="text-xs leading-5 text-muted">
               Klik teks yang disorot untuk menggantinya. Docuflow menutup teks lama dengan warna latar di sekitarnya lalu menulis teks baru di atasnya — rapi pada latar polos, terlihat pada latar bergambar atau bergradasi. Teks pengganti tidak mengalir ulang, jadi teks yang lebih panjang akan melewati batas teks lama. Teks asli juga tetap ada di dalam file, tertutup, sehingga cara ini <b>bukan</b> redaksi yang aman.
             </p>
           ) : null}
           {notice ? <p className="text-xs font-bold text-accent" role="status">{notice}</p> : null}
-          <div ref={scrollRef} className="flex max-h-[74vh] justify-center overflow-auto rounded-[1.75rem] border border-ink bg-canvas p-5">
+          <div ref={attachScroll} className="flex max-h-[74vh] justify-center overflow-auto rounded-[1.75rem] border border-ink bg-canvas p-5">
             {engine && pageSize ? (
               <EditorCanvas
                 engine={engine}
