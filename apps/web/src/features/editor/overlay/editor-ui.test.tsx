@@ -46,6 +46,12 @@ describe("EditorToolbar", () => {
     expect(state().objects).toHaveLength(0);
   });
 
+  it("offers the retype tool for replacing text already on the page", () => {
+    render(<EditorToolbar onPickImage={vi.fn()} disabled={false} />);
+    fireEvent.click(screen.getByLabelText("Ganti teks asli"));
+    expect(state().tool).toBe("retype");
+  });
+
   it("disables every control when the capability is unavailable", () => {
     render(<EditorToolbar onPickImage={vi.fn()} disabled />);
     expect(screen.getByLabelText("Teks")).toBeDisabled();

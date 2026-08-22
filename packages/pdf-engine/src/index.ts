@@ -18,6 +18,25 @@ export interface PdfEngine {
 
 export type PdfPageSize = { width: number; height: number };
 
+/**
+ * One run of text already on the page, positioned in PDF user space. The
+ * cover-and-retype flow uses it to place a patch exactly over existing words.
+ */
+export type PdfTextRun = {
+  text: string;
+  /** Baseline origin, the same anchor PDF text placement uses. */
+  x: number;
+  y: number;
+  width: number;
+  fontSize: number;
+  /** Degrees, counter-clockwise, matching PDF rotation. */
+  rotation: number;
+  /** Em fractions from the font's own metrics, used to size the patch. */
+  ascent: number;
+  descent: number;
+  fontFamily: string;
+};
+
 export interface ViewablePdfEngine extends PdfEngine {
   getViewerSource(): string | undefined;
   detectTextLayer(samplePages?: number): Promise<"present" | "absent" | "unknown">;
@@ -26,6 +45,8 @@ export interface ViewablePdfEngine extends PdfEngine {
   getPageSize(pageNumber: number): Promise<PdfPageSize>;
   /** Renders at an explicit scale rather than fitting a width. */
   renderPageAtScale(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Promise<void>;
+  /** Text already on the page, positioned in PDF user space. */
+  getTextRuns(pageNumber: number): Promise<PdfTextRun[]>;
 }
 
 /**
@@ -114,6 +135,37 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
     const page = await this.document.getPage(pageNumber);
     const viewport = page.getViewport({ scale: 1 });
     return { width: viewport.width, height: viewport.height };
+  }
+
+  /**
+   * PDF.js reports each item's transform in PDF user space, so the origin and
+   * axis direction already match the editor and no conversion is needed here.
+   */
+  async getTextRuns(pageNumber: number): Promise<PdfTextRun[]> {
+    if (!this.document) return [];
+    const page = await this.document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const runs: PdfTextRun[] = [];
+    for (const item of content.items) {
+      if (!("str" in item) || item.str.trim() === "") continue;
+      const [scaleX, skewY, , scaleYRaw, x, y] = item.transform;
+      const fontSize = Math.hypot(skewY, scaleYRaw);
+      if (fontSize <= 0 || item.width <= 0) continue;
+      const style = content.styles?.[item.fontName];
+      runs.push({
+        text: item.str,
+        x,
+        y,
+        width: item.width,
+        fontSize,
+        rotation: (Math.atan2(skewY, scaleX) * 180) / Math.PI,
+        // Fall back to typical Latin proportions when the font omits metrics.
+        ascent: style?.ascent && style.ascent > 0 ? style.ascent : 0.83,
+        descent: style?.descent ? Math.abs(style.descent) : 0.22,
+        fontFamily: style?.fontFamily ?? "sans-serif",
+      });
+    }
+    return runs;
   }
 
   async renderPageAtScale(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Promise<void> {

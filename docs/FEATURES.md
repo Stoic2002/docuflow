@@ -18,7 +18,8 @@ Dokumen ini menjelaskan fitur yang tersedia pada vertical slice lokal Docuflow, 
 | --- | --- | --- | --- |
 | Dashboard | `/` | Tersedia | API, PostgreSQL, storage lokal |
 | Edit PDF (overlay editor) | `/edit` | Bergantung capability | PDF.js, qpdf, pdfinfo |
-| Edit teks asli di dalam PDF | `/edit` | Belum tersedia | Memerlukan SDK komersial |
+| Ganti teks asli (cover & retype) | `/edit` | Bergantung capability | PDF.js, qpdf, pdfinfo |
+| Edit teks asli secara native | `/edit` | Belum tersedia | Memerlukan SDK komersial |
 | Merge PDF | `/merge` | Bergantung capability | qpdf |
 | Split PDF | `/split` | Bergantung capability | qpdf |
 | Compress PDF | `/compress` | Bergantung capability | qpdf |
@@ -60,13 +61,35 @@ Yang sudah tersedia tanpa SDK komersial adalah **overlay editing** — menambahk
 
 Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atasnya. Tersedia:
 
-- tool Pilih, Teks, Kotak, Elips, Garis, Gambar bebas, dan Sisipkan JPG;
+- tool Pilih, Teks, Kotak, Elips, Garis, Gambar bebas, Sisipkan JPG, dan Ganti teks asli;
 - geser objek dengan tool Pilih;
 - panel Properti untuk warna, isi, ketebalan garis, ukuran teks, font, perataan, opacity, dan rotasi;
 - undo/redo, hapus objek terpilih, navigasi halaman, dan zoom;
 - pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi.
 
 Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
+
+### Ganti teks asli (cover & retype)
+
+Tool **Ganti teks asli** menyorot setiap potongan teks yang sudah ada di halaman. Klik salah satunya, dan Docuflow:
+
+1. mengukur warna latar di sekeliling teks itu dari halaman yang sudah dirender;
+2. menebak warna tinta aslinya dari piksel yang paling jauh dari warna latar;
+3. memilih font terdaftar yang paling mendekati font yang dipakai halaman;
+4. menutup teks lama dengan kotak sewarna latar, lalu menulis teks yang sama di atasnya pada baseline yang persis sama.
+
+Teks itu kemudian tinggal diedit di panel Properti. Penutup dan teks penggantinya dibuat sebagai satu langkah, jadi satu kali undo membatalkan keduanya.
+
+**Batasannya harus dipahami sebelum dipakai:**
+
+- Hasilnya **rapi hanya pada latar polos**. Pada foto, gradasi, atau tekstur, tambalannya akan terlihat. Docuflow mengukur keseragaman latar lebih dulu dan memberi peringatan bila tidak rata — tetapi tetap mengizinkan, karena kadang itu memang yang diinginkan.
+- **Ini bukan redaksi yang aman.** Teks lama tetap ada di dalam file dan masih terbaca oleh ekstraktor teks seperti `pdftotext`; ia hanya tertutup secara visual. Untuk menghapus informasi sensitif secara permanen, cara ini tidak boleh dipakai.
+- Halaman hasil scan tidak punya teks yang bisa dipilih. Jalankan Searchable OCR lebih dulu.
+- Teks pengganti tidak mengalir ulang. Kalau teks baru lebih panjang, ia akan melewati batas teks lama.
+
+Untuk mengubah teks berikut reflow paragrafnya, tetap dibutuhkan SDK komersial.
+
+## Objek overlay
 
 Objek yang didukung:
 

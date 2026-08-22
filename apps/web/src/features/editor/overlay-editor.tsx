@@ -34,6 +34,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const [textLayer, setTextLayer] = useState<"present" | "absent" | "unknown">("unknown");
   const [activeColor, setActiveColor] = useState(DEFAULT_STROKE_COLOR);
   const [result, setResult] = useState<DirectToolResult>();
+  const [notice, setNotice] = useState<string | null>(null);
 
   const page = useEditorStore((state) => state.selectedPage);
   const setPage = useEditorStore((state) => state.setSelectedPage);
@@ -43,6 +44,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const assets = useOverlayStore((state) => state.assets);
   const selectedId = useOverlayStore((state) => state.selectedId);
   const lastLimit = useOverlayStore((state) => state.lastLimit);
+  const tool = useOverlayStore((state) => state.tool);
   const add = useOverlayStore((state) => state.add);
   const remove = useOverlayStore((state) => state.remove);
   const undo = useOverlayStore((state) => state.undo);
@@ -196,6 +198,12 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         <div className="space-y-3">
           <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} />
           {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
+          {tool === "retype" ? (
+            <p className="text-xs leading-5 text-muted">
+              Klik teks yang disorot untuk menggantinya. Docuflow menutup teks lama dengan warna latar di sekitarnya lalu menulis teks baru di atasnya — rapi pada latar polos, terlihat pada latar bergambar atau bergradasi. Teks asli tetap ada di dalam file, tertutup, jadi cara ini <b>bukan</b> redaksi yang aman.
+            </p>
+          ) : null}
+          {notice ? <p className="text-xs font-bold text-accent" role="status">{notice}</p> : null}
           <div className="flex max-h-[74vh] justify-center overflow-auto rounded-[1.75rem] border border-ink bg-canvas p-5">
             {engine && pageSize ? (
               <EditorCanvas
@@ -207,6 +215,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
                 fonts={fonts}
                 activeFont=""
                 activeColor={activeColor}
+                onNotice={setNotice}
               />
             ) : (
               <LoadingState label="Menyiapkan halaman…" />

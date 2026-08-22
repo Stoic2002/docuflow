@@ -134,3 +134,27 @@ describe("hitTest", () => {
     expect(hitTest([text("t")], 1, 210, 405)?.id).toBe("t");
   });
 });
+
+describe("addMany", () => {
+  it("adds a cover and its replacement as one undo step", () => {
+    const cover = box("cover", 1, { fill: "#ffffff", strokeWidth: 0 });
+    expect(state().addMany([cover, text("replacement")])).toBe(true);
+    expect(state().objects).toHaveLength(2);
+    expect(state().selectedId).toBe("replacement");
+    state().undo();
+    // Undo must not leave the cover behind with the text gone.
+    expect(state().objects).toHaveLength(0);
+  });
+
+  it("rejects a group that would cross the per-page limit", () => {
+    for (let index = 0; index < MAX_OBJECTS_PER_PAGE - 1; index += 1) state().add(box(`a${index}`));
+    expect(state().addMany([box("x"), box("y")])).toBe(false);
+    expect(state().lastLimit).toBe("page");
+    expect(state().objects).toHaveLength(MAX_OBJECTS_PER_PAGE - 1);
+  });
+
+  it("ignores an empty group", () => {
+    expect(state().addMany([])).toBe(false);
+    expect(state().past).toHaveLength(0);
+  });
+});

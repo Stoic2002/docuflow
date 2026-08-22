@@ -27,6 +27,8 @@ type OverlayState = {
   setTool: (tool: OverlayTool) => void;
   select: (id: string | null) => void;
   add: (object: OverlayObject, asset?: File) => boolean;
+  /** Adds several objects as one history step, e.g. a cover plus its replacement text. */
+  addMany: (objects: OverlayObject[]) => boolean;
   update: (id: string, patch: Partial<OverlayObject>, options?: { history?: boolean }) => void;
   move: (id: string, deltaX: number, deltaY: number) => void;
   remove: (id: string) => void;
@@ -86,6 +88,29 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
 
   // history:false is for the continuous stream of updates during a drag; the
   // caller takes one snapshot with commit() before the gesture starts.
+  addMany: (incoming) => {
+    if (incoming.length === 0) return false;
+    const { objects } = get();
+    const page = incoming[0].page;
+    const onPage = objects.filter((item) => item.page === page).length;
+    if (onPage + incoming.length > MAX_OBJECTS_PER_PAGE) {
+      set({ lastLimit: "page" });
+      return false;
+    }
+    if (objects.length + incoming.length > MAX_OBJECTS) {
+      set({ lastLimit: "document" });
+      return false;
+    }
+    set((state) => ({
+      past: pushHistory(state.past, state.objects),
+      future: [],
+      objects: [...state.objects, ...incoming],
+      selectedId: incoming[incoming.length - 1].id,
+      lastLimit: null,
+    }));
+    return true;
+  },
+
   update: (id, patch, options) =>
     set((state) => ({
       past: options?.history === false ? state.past : pushHistory(state.past, state.objects),

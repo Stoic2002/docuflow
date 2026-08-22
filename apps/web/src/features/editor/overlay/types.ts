@@ -12,7 +12,8 @@ export type OverlayTool =
   | "ellipse"
   | "line"
   | "draw"
-  | "image";
+  | "image"
+  | "retype";
 
 export type TextAlign = "left" | "center" | "right";
 
