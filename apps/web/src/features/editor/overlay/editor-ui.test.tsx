@@ -101,3 +101,23 @@ describe("PropertiesPanel", () => {
     expect(state().objects[0].opacity).toBe(0.5);
   });
 });
+
+describe("PropertiesPanel sizing", () => {
+  it("resizes a box after it was drawn", () => {
+    state().add(box);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    fireEvent.change(screen.getByLabelText("Lebar"), { target: { value: "240" } });
+    fireEvent.change(screen.getByLabelText("Tinggi"), { target: { value: "120" } });
+    expect(state().objects[0]).toMatchObject({ width: 240, height: 120 });
+  });
+
+  it("does not offer sizing for a freehand path", () => {
+    state().add({
+      id: "p1", kind: "draw", page: 1, points: [{ x: 0, y: 0 }, { x: 5, y: 5 }],
+      stroke: "#000000", strokeWidth: 2, opacity: 1, rotation: 0,
+    });
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    expect(screen.queryByLabelText("Lebar")).toBeNull();
+    expect(screen.getByLabelText("Tebal garis")).toBeVisible();
+  });
+});

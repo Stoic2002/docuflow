@@ -134,6 +134,8 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
 
       {isBox(selected) ? (
         <>
+          <Slider label="Lebar" value={selected.width} min={4} max={1200} step={1} suffix="pt" onChange={(width) => patch({ width })} />
+          <Slider label="Tinggi" value={selected.height} min={4} max={1200} step={1} suffix="pt" onChange={(height) => patch({ height })} />
           <label className="flex items-center gap-2 text-sm font-semibold text-ink">
             <input
               type="checkbox"
