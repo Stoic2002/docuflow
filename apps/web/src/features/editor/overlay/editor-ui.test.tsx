@@ -88,9 +88,9 @@ describe("EditorToolbar", () => {
 });
 
 describe("PropertiesPanel", () => {
-  it("explains what to do when nothing is selected", () => {
+  it("tells the user what to click when nothing is selected", () => {
     render(<PropertiesPanel fonts={fonts} fontsAvailable />);
-    expect(screen.getByText(/Pilih objek di kanvas/)).toBeVisible();
+    expect(screen.getByText(/Klik teks atau garis di halaman/)).toBeVisible();
   });
 
   it("never lets a line break into the stored text", () => {

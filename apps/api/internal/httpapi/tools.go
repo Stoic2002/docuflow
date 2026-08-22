@@ -379,20 +379,21 @@ func isMultipart(r *http.Request) bool {
 
 func (s *Server) requireTool(w http.ResponseWriter, tool string) bool {
 	capabilities := s.detector.Detect()
-	available := capabilities.QPDF.Available
-	reason := capabilities.QPDF.Reason
-	if tool == "ocrmypdf" {
-		available = capabilities.OCRmyPDF.Available
-		reason = capabilities.OCRmyPDF.Reason
+	// A lookup rather than a chain of ifs, so a tool added to the detector
+	// cannot silently fall through to qpdf's availability.
+	byName := map[string]processing.ToolCapability{
+		"qpdf":     capabilities.QPDF,
+		"ocrmypdf": capabilities.OCRmyPDF,
+		"pdfinfo":  capabilities.PDFInfo,
+		"pdftoppm": capabilities.PDFToPPM,
+		"pdffonts": capabilities.PDFFonts,
 	}
-	if tool == "pdfinfo" {
-		available = capabilities.PDFInfo.Available
-		reason = capabilities.PDFInfo.Reason
+	entry, known := byName[tool]
+	if !known {
+		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "The request could not be completed", nil)
+		return false
 	}
-	if tool == "pdftoppm" {
-		available = capabilities.PDFToPPM.Available
-		reason = capabilities.PDFToPPM.Reason
-	}
+	available, reason := entry.Available, entry.Reason
 	if !available {
 		writeError(w, http.StatusServiceUnavailable, processing.CodeToolUnavailable, tool+" is unavailable", map[string]any{"reason": reason})
 		return false

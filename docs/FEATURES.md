@@ -69,7 +69,8 @@ Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atas
 - panel Properti untuk warna, isi, ketebalan garis, ukuran teks, font, perataan, opacity, dan rotasi;
 - undo/redo, hapus objek terpilih, navigasi halaman, dan zoom;
 - pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi;
-- zoom dengan cubit dua jari di trackpad atau `Ctrl` + scroll, yang memperbesar ke titik kursor; usap dua jari biasa tetap menggulung halaman.
+- zoom dengan cubit dua jari di trackpad atau `Ctrl` + scroll, yang memperbesar ke titik kursor; usap dua jari biasa tetap menggulung halaman;
+- editor memakai seluruh viewport: navigasi utama aplikasi disembunyikan dan kanvas mengisi tepi ke tepi, dengan panel properti mengambang di atasnya.
 - warna diisi lewat pemilih warna maupun kode hex, dan ukuran teks dipilih dari daftar ukuran umum.
 
 Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
@@ -141,7 +142,11 @@ Original tidak pernah ditimpa; hasilnya selalu menjadi versi baru.
 
 Belum didukung: synthetic bold/italic (sediakan file terpisah), serta shaping untuk aksara yang membutuhkannya seperti Arab, Thai, dan Devanagari. Latin dan Bahasa Indonesia sudah benar.
 
-`DocumentFonts` juga dapat memindai font yang **sudah ada** di dalam PDF yang diupload lewat `pdffonts`, supaya editor bisa menawarkan tipografi dokumen itu sendiri.
+### Font yang sudah ada di dokumen
+
+`GET /api/documents/{documentId}/fonts` memindai font yang **sudah dipakai** PDF yang diupload, lewat `pdffonts`. Editor menampilkannya di panel kanan dan menandai mana yang sudah terpasang di server dan mana yang belum.
+
+Font yang bertanda **belum ada** tidak bisa dipakai untuk teks pengganti; Docuflow memilih font terdekat yang tersedia. Daftar ini memberi tahu persis file `.ttf` mana yang perlu disalin ke `assets/fonts/`.
 
 ## Merge PDF
 
@@ -305,6 +310,7 @@ Status mesin verifikasi terakhir:
 | `POST` | `/api/documents/{documentId}/restore` | Restore soft-deleted document |
 | `DELETE` | `/api/documents/{documentId}/permanent` | Permanent delete yang terkonfirmasi |
 | `GET` | `/api/fonts` | Font yang dapat di-embed dan file yang ditolak |
+| `GET` | `/api/documents/{documentId}/fonts` | Font yang sudah dipakai di dalam dokumen |
 | `POST` | `/api/edit-sessions` | Membuat sesi Preview dari upload langsung |
 | `POST` | `/api/edit-sessions/{sessionId}/export` | Meratakan dokumen overlay editor menjadi versi baru |
 | `POST` | `/api/tools/merge` | Merge PDF |

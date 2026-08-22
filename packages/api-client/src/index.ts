@@ -157,6 +157,9 @@ export type AnnotationImage = {
 };
 
 export type RegisteredFont = { id: string; family: string; serif: boolean; fixed: boolean };
+
+/** A typeface the uploaded PDF already carries, as reported by pdffonts. */
+export type DocumentFont = { name: string; type: string; embedded: boolean; subset: boolean };
 export type FontIssue = { file: string; reason: string };
 
 export type DirectSplitResult = {
@@ -277,6 +280,8 @@ export const api = {
     ),
   fonts: (signal?: AbortSignal) =>
     request<{ fonts: RegisteredFont[]; issues: FontIssue[] }>("/api/fonts", { signal }),
+  documentFonts: (documentId: string, signal?: AbortSignal) =>
+    request<{ fonts: DocumentFont[] }>(`/api/documents/${encodeURIComponent(documentId)}/fonts`, { signal }),
   /**
    * Flattens the editor document onto the session PDF and saves a new version.
    * Images referenced by `asset` are sent as file parts under that same name.

@@ -75,25 +75,43 @@ export function Field({
   htmlFor?: string;
 }) {
   return (
-    <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="block text-[11px] font-black uppercase tracking-[0.08em] text-muted">
+    <div className="space-y-1">
+      <label htmlFor={htmlFor} className="block text-xs font-semibold text-ink/70">
         {label}
       </label>
       {children}
-      {hint ? <p className="text-xs leading-5 text-muted">{hint}</p> : null}
+      {hint ? <p className="text-[11px] leading-4 text-muted">{hint}</p> : null}
     </div>
   );
 }
 
 export function TextInput({ className, invalid, ...props }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
-  return <input className={cx("form-control text-sm", invalid && "border-accent", className)} {...props} />;
+  return <input className={cx("form-control h-9 min-h-0 text-sm", invalid && "border-accent", className)} {...props} />;
+}
+
+/** A titled group with a hairline above it, so a panel reads as sections. */
+export function PanelSection({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="border-t border-line px-4 py-3.5 first:border-t-0">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <h3 className="text-[13px] font-bold text-ink">{title}</h3>
+        {aside}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
 }
 
 export function SelectInput({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cx("form-control cursor-pointer text-sm", className)} {...props}>
-      {children}
-    </select>
+    <div className="relative">
+      <select className={cx("form-control h-9 min-h-0 cursor-pointer appearance-none pr-8 text-sm", className)} {...props}>
+        {children}
+      </select>
+      <svg aria-hidden="true" viewBox="0 0 12 12" className="pointer-events-none absolute right-3 top-1/2 size-3 -translate-y-1/2 text-muted">
+        <path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
   );
 }
 
@@ -120,7 +138,7 @@ export function ColorInput({ label, value, onChange }: { label: string; value: s
           setDraft(event.target.value);
           onChange(event.target.value);
         }}
-        className="size-10 shrink-0 cursor-pointer rounded-xl border border-line bg-paper p-1"
+        className="size-9 shrink-0 cursor-pointer rounded-lg border border-line bg-paper p-1"
       />
       <TextInput
         value={shown}
@@ -156,8 +174,8 @@ export function RangeInput({
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-[11px] font-black uppercase tracking-[0.08em] text-muted">{label}</label>
-        <span className="font-mono text-xs text-ink">{Math.round(value * 100) / 100}{suffix ?? ""}</span>
+        <label htmlFor={id} className="text-xs font-semibold text-ink/70">{label}</label>
+        <span className="rounded-md bg-canvas px-1.5 py-0.5 font-mono text-[11px] text-ink">{Math.round(value * 100) / 100}{suffix ?? ""}</span>
       </div>
       <input
         id={id}

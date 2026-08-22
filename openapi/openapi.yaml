@@ -131,6 +131,34 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DirectToolResult" }
         default: { $ref: "#/components/responses/Error" }
+  /documents/{documentId}/fonts:
+    parameters: [{ $ref: "#/components/parameters/DocumentId" }]
+    get:
+      operationId: getDocumentFonts
+      description: >-
+        Lists the typefaces the PDF already carries, as reported by pdffonts.
+        The editor pairs these against the registry so a font the server cannot
+        reproduce can be named precisely.
+      responses:
+        "200":
+          description: Fonts embedded in or referenced by the document
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fonts]
+                properties:
+                  fonts:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, type, embedded, subset]
+                      properties:
+                        name: { type: string }
+                        type: { type: string, description: PDF font type, for example "CID TrueType" }
+                        embedded: { type: boolean }
+                        subset: { type: boolean }
+        default: { $ref: "#/components/responses/Error" }
   /fonts:
     get:
       operationId: listFonts

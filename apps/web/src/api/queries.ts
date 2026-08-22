@@ -9,6 +9,7 @@ export const queryKeys = {
   versions: (id: string) => ["documents", id, "versions"] as const,
   editSession: (id: string) => ["edit-sessions", id] as const,
   fonts: ["fonts"] as const,
+  documentFonts: (id: string) => ["documents", id, "fonts"] as const,
 };
 
 export const capabilitiesQuery = queryOptions({
@@ -22,6 +23,15 @@ export const fontsQuery = queryOptions({
   // The registry is read once at server start, so this never goes stale mid-session.
   staleTime: Infinity,
 });
+
+export const documentFontsQuery = (id: string) =>
+  queryOptions({
+    queryKey: queryKeys.documentFonts(id),
+    queryFn: ({ signal }) => api.documentFonts(id, signal),
+    // pdffonts may be absent; an empty list is a fine answer, not an error worth retrying.
+    retry: false,
+    staleTime: Infinity,
+  });
 
 export const documentsQuery = queryOptions({
   queryKey: queryKeys.documents,

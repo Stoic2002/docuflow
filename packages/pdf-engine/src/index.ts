@@ -196,10 +196,9 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
     const page = await this.document.getPage(pageNumber);
     const [boxX, boxY] = page.view;
     if (page.rotate % 360 !== 0 || boxX !== 0 || boxY !== 0) return [];
-    const pdfjs = await import("pdfjs-dist");
-    const { OPS } = pdfjs;
+    const { OPS } = await import("pdfjs-dist");
     const list = await page.getOperatorList();
-    const collector = new RuleCollector(OPS);
+    const collector = new RuleCollector(OPS as unknown as PathOps);
     for (let index = 0; index < list.fnArray.length; index += 1) {
       collector.step(list.fnArray[index], list.argsArray[index]);
     }
@@ -273,6 +272,35 @@ function multiply(outer: Matrix, inner: Matrix): Matrix {
   ];
 }
 
+/**
+ * The operator identifiers RuleCollector needs, named so it can be driven with
+ * a stub in tests instead of a live pdf.js.
+ */
+export type PathOps = {
+  save: number;
+  restore: number;
+  transform: number;
+  setLineWidth: number;
+  constructPath: number;
+  endPath: number;
+  paintFormXObjectBegin: number;
+  paintFormXObjectEnd: number;
+};
+
+/**
+ * Path element codes inside the flat buffer pdf.js hands to constructPath.
+ * Each code is followed by its own number of coordinates.
+ */
+export const DRAW_OPS = {
+  moveTo: 0,
+  lineTo: 1,
+  curveTo: 2,
+  quadraticCurveTo: 3,
+  closePath: 4,
+} as const;
+
+type SubPath = { points: [number, number][]; closed: boolean };
+
 /** A stroke or bar thinner than this reads as a rule rather than a filled box. */
 const MAX_RULE_THICKNESS = 4;
 /** Shorter marks are decoration or glyph artefacts, not separators. */
@@ -280,26 +308,15 @@ const MIN_RULE_LENGTH = 8;
 /** How far an endpoint may drift and still count as axis aligned. */
 const AXIS_TOLERANCE = 0.6;
 
-/** The operator identifiers RuleCollector needs, kept minimal so it can be tested with a stub. */
-export type PathOps = {
-  save: number;
-  restore: number;
-  transform: number;
-  setLineWidth: number;
-  constructPath: number;
-  moveTo: number;
-  lineTo: number;
-  curveTo: number;
-  curveTo2: number;
-  curveTo3: number;
-  closePath: number;
-  rectangle: number;
-};
-
 /**
- * Interprets the path-building operators of one page. Only the transform stack
- * and path geometry are tracked; paint colour is read from the rendered page
- * instead, which is far simpler than following the colour-space operators.
+ * Interprets the path-building operators of one page.
+ *
+ * pdf.js does not hand over the original PDF path operators. It flattens each
+ * path into one buffer of element codes and coordinates, already resolving
+ * rectangles into their four corners, and reports it once the path is painted.
+ * Only the transform stack and that geometry are tracked here; paint colour is
+ * read back from the rendered page instead, which is far simpler than
+ * following the colour-space operators.
  */
 export class RuleCollector {
   private stack: Matrix[] = [];
@@ -310,65 +327,77 @@ export class RuleCollector {
   constructor(private readonly ops: PathOps) {}
 
   step(fn: number, args: unknown[]): void {
-    if (fn === this.ops.save) {
+    if (fn === this.ops.save || fn === this.ops.paintFormXObjectBegin) {
       this.stack.push(this.matrix);
+      // A form XObject carries its own matrix, and tables are often drawn
+      // inside one, so its content would land in the wrong place without it.
+      if (fn === this.ops.paintFormXObjectBegin && isMatrix(args[0])) {
+        this.matrix = multiply(this.matrix, args[0]);
+      }
       return;
     }
-    if (fn === this.ops.restore) {
+    if (fn === this.ops.restore || fn === this.ops.paintFormXObjectEnd) {
       this.matrix = this.stack.pop() ?? IDENTITY;
       return;
     }
     if (fn === this.ops.transform) {
-      this.matrix = multiply(this.matrix, args as unknown as Matrix);
+      if (isMatrix(args)) this.matrix = multiply(this.matrix, args);
       return;
     }
     if (fn === this.ops.setLineWidth) {
       this.lineWidth = Number(args[0]) || 1;
       return;
     }
-    if (fn === this.ops.constructPath) {
-      this.path(args[0] as number[], args[1] as number[]);
+    if (fn !== this.ops.constructPath) return;
+    // endPath means the geometry was only used for clipping, never painted.
+    if (args[0] === this.ops.endPath) return;
+    const buffer = readPathBuffer(args[1]);
+    if (!buffer) return;
+    for (const subPath of decodePath(buffer, this.matrix)) {
+      this.emit(subPath, Math.max(this.lineWidth * this.scale(), 0.1));
     }
   }
 
   private scale(): number {
-    // Average of the axis scales; rules are almost always axis aligned anyway.
     const x = Math.hypot(this.matrix[0], this.matrix[1]);
     const y = Math.hypot(this.matrix[2], this.matrix[3]);
     return (x + y) / 2 || 1;
   }
 
-  private path(operations: number[], coordinates: number[]): void {
-    if (!Array.isArray(operations) || !Array.isArray(coordinates)) return;
-    let cursor = 0;
-    let current: [number, number] | null = null;
-    let start: [number, number] | null = null;
-    const strokeWidth = Math.max(this.lineWidth * this.scale(), 0.1);
-    for (const operation of operations) {
-      if (operation === this.ops.moveTo) {
-        current = apply(this.matrix, coordinates[cursor], coordinates[cursor + 1]);
-        start = current;
-        cursor += 2;
-      } else if (operation === this.ops.lineTo) {
-        const next = apply(this.matrix, coordinates[cursor], coordinates[cursor + 1]);
-        cursor += 2;
-        if (current) this.segment(current, next, strokeWidth);
-        current = next;
-      } else if (operation === this.ops.curveTo) {
-        cursor += 6;
-        current = apply(this.matrix, coordinates[cursor - 2], coordinates[cursor - 1]);
-      } else if (operation === this.ops.curveTo2 || operation === this.ops.curveTo3) {
-        cursor += 4;
-        current = apply(this.matrix, coordinates[cursor - 2], coordinates[cursor - 1]);
-      } else if (operation === this.ops.closePath) {
-        if (current && start) this.segment(current, start, strokeWidth);
-        current = start;
-      } else if (operation === this.ops.rectangle) {
-        const [x, y, width, height] = coordinates.slice(cursor, cursor + 4);
-        cursor += 4;
-        this.rectangle(x, y, width, height);
-      }
+  /**
+   * A closed thin quad is one rule down its middle, not four edges. Anything
+   * else contributes whichever of its edges are axis aligned.
+   */
+  private emit(subPath: SubPath, strokeWidth: number): void {
+    const { points, closed } = subPath;
+    if (points.length < 2) return;
+    if (closed && points.length >= 4 && points.length <= 5 && this.emitThinQuad(points)) return;
+    for (let index = 1; index < points.length; index += 1) {
+      this.segment(points[index - 1], points[index], strokeWidth);
     }
+    if (closed) this.segment(points[points.length - 1], points[0], strokeWidth);
+  }
+
+  private emitThinQuad(points: [number, number][]): boolean {
+    const xs = points.map((point) => point[0]);
+    const ys = points.map((point) => point[1]);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const bottom = Math.min(...ys);
+    const top = Math.max(...ys);
+    const width = right - left;
+    const height = top - bottom;
+    if (height <= MAX_RULE_THICKNESS && width >= MIN_RULE_LENGTH) {
+      const middle = (bottom + top) / 2;
+      this.found.push({ orientation: "horizontal", x1: left, y1: middle, x2: right, y2: middle, thickness: Math.max(height, 0.1) });
+      return true;
+    }
+    if (width <= MAX_RULE_THICKNESS && height >= MIN_RULE_LENGTH) {
+      const middle = (left + right) / 2;
+      this.found.push({ orientation: "vertical", x1: middle, y1: bottom, x2: middle, y2: top, thickness: Math.max(width, 0.1) });
+      return true;
+    }
+    return false;
   }
 
   private segment(from: [number, number], to: [number, number], thickness: number): void {
@@ -385,43 +414,68 @@ export class RuleCollector {
     }
   }
 
-  /** Table borders are often thin filled rectangles rather than strokes. */
-  private rectangle(x: number, y: number, width: number, height: number): void {
-    const corners: [number, number][] = [
-      apply(this.matrix, x, y),
-      apply(this.matrix, x + width, y),
-      apply(this.matrix, x + width, y + height),
-      apply(this.matrix, x, y + height),
-    ];
-    const xs = corners.map((corner) => corner[0]);
-    const ys = corners.map((corner) => corner[1]);
-    const left = Math.min(...xs);
-    const right = Math.max(...xs);
-    const bottom = Math.min(...ys);
-    const top = Math.max(...ys);
-    const boxWidth = right - left;
-    const boxHeight = top - bottom;
-    if (boxHeight <= MAX_RULE_THICKNESS && boxWidth >= MIN_RULE_LENGTH) {
-      const middle = (bottom + top) / 2;
-      this.found.push({ orientation: "horizontal", x1: left, y1: middle, x2: right, y2: middle, thickness: Math.max(boxHeight, 0.1) });
-      return;
-    }
-    if (boxWidth <= MAX_RULE_THICKNESS && boxHeight >= MIN_RULE_LENGTH) {
-      const middle = (left + right) / 2;
-      this.found.push({ orientation: "vertical", x1: middle, y1: bottom, x2: middle, y2: top, thickness: Math.max(boxWidth, 0.1) });
-    }
-  }
-
   /** Drops duplicates, which stroked-then-filled paths produce in pairs. */
   rules(): PdfVectorRule[] {
     const seen = new Set<string>();
     return this.found.filter((rule) => {
-      const key = [rule.orientation, rule.x1, rule.y1, rule.x2, rule.y2]
-        .map((value) => (typeof value === "number" ? value.toFixed(1) : value))
-        .join("|");
+      const key = `${rule.orientation}|${[rule.x1, rule.y1, rule.x2, rule.y2].map((value) => value.toFixed(1)).join("|")}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
   }
+}
+
+function isMatrix(value: unknown): value is Matrix {
+  return Array.isArray(value) && value.length === 6 && value.every((entry) => typeof entry === "number");
+}
+
+/**
+ * pdf.js wraps the path buffer in an array and uses a Float32Array, so a plain
+ * Array.isArray check rejects every real page.
+ */
+function readPathBuffer(value: unknown): ArrayLike<number> | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (!candidate || typeof candidate !== "object") return null;
+  const buffer = candidate as ArrayLike<number>;
+  return typeof buffer.length === "number" && buffer.length > 0 ? buffer : null;
+}
+
+/**
+ * Splits the flat buffer into subpaths in page space. A curve ends the run it
+ * belongs to, because nothing that follows a curve is a straight rule.
+ */
+export function decodePath(buffer: ArrayLike<number>, matrix: Matrix): SubPath[] {
+  const subPaths: SubPath[] = [];
+  let points: [number, number][] = [];
+  const flush = (closed: boolean) => {
+    if (points.length >= 2) subPaths.push({ points, closed });
+    points = [];
+  };
+  let index = 0;
+  while (index < buffer.length) {
+    const code = buffer[index];
+    index += 1;
+    if (code === DRAW_OPS.moveTo) {
+      flush(false);
+      points = [apply(matrix, buffer[index], buffer[index + 1])];
+      index += 2;
+    } else if (code === DRAW_OPS.lineTo) {
+      points.push(apply(matrix, buffer[index], buffer[index + 1]));
+      index += 2;
+    } else if (code === DRAW_OPS.curveTo || code === DRAW_OPS.quadraticCurveTo) {
+      const span = code === DRAW_OPS.curveTo ? 6 : 4;
+      const end = apply(matrix, buffer[index + span - 2], buffer[index + span - 1]);
+      index += span;
+      flush(false);
+      points = [end];
+    } else if (code === DRAW_OPS.closePath) {
+      flush(true);
+    } else {
+      // An unknown code means the stream is out of step; stop rather than guess.
+      break;
+    }
+  }
+  flush(false);
+  return subPaths;
 }

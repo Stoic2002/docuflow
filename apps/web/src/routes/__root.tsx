@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { Link, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
+import { Link, Outlet, createRootRouteWithContext, useMatchRoute } from "@tanstack/react-router";
 import { Files } from "lucide-react";
 
 type RouterContext = { queryClient: QueryClient };
@@ -17,9 +17,13 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootLayout() {
+  // The editor is a workspace, not a page: it gives the whole viewport to the
+  // canvas and carries its own way back, so the site chrome steps aside.
+  const matchRoute = useMatchRoute();
+  const fullscreen = Boolean(matchRoute({ to: "/edit/$sessionId" }));
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur-xl">
+      <header className={`sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur-xl ${fullscreen ? "hidden" : ""}`}>
         <nav className="page-shell flex min-h-20 items-center justify-between gap-5" aria-label="Navigasi utama">
           <Link to="/" className="group flex shrink-0 items-center gap-3 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
             <span className="flex size-10 items-center justify-center rounded-full bg-accent text-white transition group-hover:rotate-6">

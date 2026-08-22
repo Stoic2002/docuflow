@@ -1,14 +1,14 @@
 import { api, userFacingError, type DirectToolResult } from "@pdf-studio/api-client";
 import { OverlayEditorEngine } from "@pdf-studio/pdf-engine";
-import { Button, Card, IconButton, Tooltip } from "@pdf-studio/ui";
+import { Button, ColorInput, IconButton, PanelSection, Tooltip } from "@pdf-studio/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
-  ChevronLeft, ChevronRight, Download, FileSearch, Minus,
+  ArrowLeft, ChevronLeft, ChevronRight, Download, Minus,
   PanelRightClose, PanelRightOpen, Plus, RotateCcw, Save,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { capabilitiesQuery, editSessionQuery, fontsQuery, queryKeys } from "../../api/queries";
+import { capabilitiesQuery, documentFontsQuery, editSessionQuery, fontsQuery, queryKeys } from "../../api/queries";
 import { ErrorState, LoadingState } from "../../components/async-state";
 import { clampZoom, useEditorStore } from "../../stores/editor-store";
 import { CapabilityNotice } from "../tools/tool-components";
@@ -18,6 +18,15 @@ import { toAnnotationDocument, usedAssets } from "./overlay/serialize";
 import { useOverlayStore } from "./overlay/store";
 import { EditorToolbar } from "./overlay/toolbar";
 import { DEFAULT_STROKE_COLOR, MAX_ASSETS } from "./overlay/types";
+
+/** Loose match so a subset tag or a weight suffix still counts as installed. */
+function matchesRegistered(name: string, fonts: { family: string }[]): boolean {
+  const wanted = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return fonts.some((font) => {
+    const family = font.family.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return family === wanted || (wanted.length > 3 && (family.includes(wanted) || wanted.includes(family)));
+  });
+}
 
 const limitMessages: Record<string, string> = {
   page: "Halaman ini sudah mencapai batas 500 objek.",
@@ -29,6 +38,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const session = useQuery(editSessionQuery(sessionId));
   const capabilities = useQuery(capabilitiesQuery);
   const fontList = useQuery(fontsQuery);
+  const documentFonts = useQuery(documentFontsQuery(sessionId));
   const queryClient = useQueryClient();
   const engineRef = useRef<OverlayEditorEngine>(null);
   const [engine, setEngine] = useState<OverlayEditorEngine>();
@@ -225,11 +235,22 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const busy = exportMutation.isPending;
 
   return (
-    <main className="flex h-[calc(100dvh-5rem)] w-full flex-col gap-2 px-3 pb-3 pt-2 sm:px-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="eyebrow">Edit PDF</p>
-          <h1 className="font-display mt-0.5 max-w-md truncate text-2xl font-medium text-ink">{session.data.session.filename}</h1>
+    <main className="flex h-[100dvh] w-full flex-col overflow-hidden bg-canvas">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-paper px-3 py-2 sm:px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <Tooltip content="Kembali ke Docuflow">
+            <Link
+              to="/edit"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-line bg-paper text-ink transition hover:border-ink hover:bg-accent-soft hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              aria-label="Kembali ke Docuflow"
+            >
+              <ArrowLeft className="size-[18px]" />
+            </Link>
+          </Tooltip>
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.08em] text-muted">Edit PDF</p>
+            <h1 className="max-w-[22rem] truncate text-base font-bold text-ink">{session.data.session.filename}</h1>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-2xl border border-line bg-paper px-1 py-1">
@@ -259,23 +280,22 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-3 py-2 sm:px-4">
         <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} showHints={showHints} onToggleHints={setShowHints} />
         {!canAnnotate ? <CapabilityNotice reason={capabilities.data.tools.qpdf.reason ?? "qpdf atau pdfinfo belum tersedia di PATH backend."} /> : null}
+        {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
+        {notice ? <p className="max-w-xl text-xs font-bold leading-5 text-accent" role="status">{notice}</p> : null}
+        {exportMutation.isError ? (
+          <p className="text-xs font-bold text-accent" role="alert">
+            Gagal menyimpan: {userFacingError(exportMutation.error)} Original tetap aman.
+          </p>
+        ) : null}
       </div>
 
-      {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
-      {notice ? <p className="text-xs font-bold text-accent" role="status">{notice}</p> : null}
-      {exportMutation.isError ? (
-        <p className="text-xs font-bold text-accent" role="alert">
-          Gagal menyimpan: {userFacingError(exportMutation.error)} Original tetap aman.
-        </p>
-      ) : null}
-
       <div className="relative min-h-0 flex-1">
-        <div ref={attachScroll} className="h-full overflow-auto rounded-[1.5rem] border border-ink bg-canvas">
+        <div ref={attachScroll} className="h-full overflow-auto bg-canvas">
           <div
-            className="flex min-h-full w-max min-w-full cursor-grab items-center justify-center p-6 active:cursor-grabbing"
+            className="flex min-h-full w-max min-w-full cursor-grab items-center justify-center p-4 active:cursor-grabbing"
             onPointerDown={onBackdropPointerDown}
             onPointerMove={onBackdropPointerMove}
             onPointerUp={onBackdropPointerUp}
@@ -309,61 +329,67 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         </div>
 
         {panelOpen ? (
-          <aside className="absolute right-3 top-3 flex max-h-[calc(100%-1.5rem)] w-72 flex-col gap-3 overflow-y-auto rounded-2xl">
+          <aside className="absolute right-3 top-3 flex max-h-[calc(100%-1.5rem)] w-[19rem] flex-col overflow-y-auto rounded-2xl border border-line bg-paper shadow-[0_6px_24px_rgba(23,23,19,.10)]">
             {textLayer === "absent" ? (
-              <Card className="border-accent/40 bg-accent-soft p-4 text-xs leading-5 text-ink">
-                <div className="flex items-start gap-2">
-                  <FileSearch className="mt-0.5 size-4 shrink-0" />
-                  <div>
-                    <p className="font-bold">Halaman ini kemungkinan hasil scan.</p>
-                    <p className="mt-1">Teksnya tidak bisa diambil alih karena berupa gambar. Jalankan OCR lebih dulu.</p>
-                    <Button asChild className="mt-2"><Link to="/ocr">Buka OCR</Link></Button>
-                  </div>
-                </div>
-              </Card>
+              <PanelSection title="Halaman ini hasil scan">
+                <p className="text-xs leading-5 text-muted">
+                  Teksnya berupa gambar, jadi tidak bisa diambil alih. Jalankan OCR lebih dulu.
+                </p>
+                <Button asChild className="w-full"><Link to="/ocr">Buka OCR</Link></Button>
+              </PanelSection>
             ) : null}
-            <Card className="p-4">
-              <h2 className="text-sm font-black text-ink">Warna untuk objek baru</h2>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  type="color"
-                  value={activeColor}
-                  aria-label="Warna untuk objek baru"
-                  onChange={(event) => setActiveColor(event.target.value)}
-                  className="size-9 shrink-0 cursor-pointer rounded-lg border border-line bg-paper p-1"
-                />
-                <input
-                  type="text"
-                  value={activeColor}
-                  maxLength={7}
-                  spellCheck={false}
-                  aria-label="Warna untuk objek baru: kode hex"
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    if (/^#?[0-9a-fA-F]{6}$/.test(next)) setActiveColor(next.startsWith("#") ? next : `#${next}`);
-                  }}
-                  className="form-control font-mono text-sm uppercase"
-                />
-              </div>
-            </Card>
+
             <PropertiesPanel fonts={fonts} fontsAvailable={fonts.length > 0} />
-            <Card className="p-4 text-xs">
-              <div className="flex justify-between"><span className="text-muted">Objek</span><b className="text-ink">{objects.length}</b></div>
-              <div className="mt-1.5 flex justify-between"><span className="text-muted">Gambar</span><b className="text-ink">{Object.keys(assets).length}</b></div>
-              <p className="mt-3 leading-5 text-muted">
-                Klik teks atau garis di halaman untuk mengambil alih dan mengeditnya. Klik dua kali pada teks untuk mengubahnya langsung di kanvas.
-                Tahan <b>Spasi</b> lalu tarik untuk menggeser halaman.
+
+            <PanelSection title="Warna untuk objek baru">
+              <ColorInput label="Warna untuk objek baru" value={activeColor} onChange={setActiveColor} />
+            </PanelSection>
+
+            {documentFonts.data && documentFonts.data.fonts.length > 0 ? (
+              <PanelSection
+                title="Font di dokumen ini"
+                aside={<span className="text-[11px] text-muted">{documentFonts.data.fonts.length}</span>}
+              >
+                <ul className="space-y-1.5">
+                  {documentFonts.data.fonts.map((font) => {
+                    const installed = matchesRegistered(font.name, fonts);
+                    return (
+                      <li key={`${font.name}-${font.type}`} className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-xs text-ink" title={font.name}>{font.name}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${installed ? "bg-emerald-100 text-emerald-800" : "bg-canvas text-muted"}`}>
+                          {installed ? "terpasang" : "belum ada"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-[11px] leading-4 text-muted">
+                  Yang bertanda <b>belum ada</b> tidak bisa dipakai untuk teks pengganti; Docuflow memilih font terdekat yang tersedia.
+                  Salin file <code className="font-mono">.ttf</code>-nya ke <code className="font-mono">assets/fonts/</code> lalu jalankan ulang API.
+                </p>
+              </PanelSection>
+            ) : null}
+
+            <PanelSection title="Dokumen">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted">Objek</span><b className="text-ink">{objects.length}</b>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted">Gambar</span><b className="text-ink">{Object.keys(assets).length}</b>
+              </div>
+              <p className="text-[11px] leading-4 text-muted">
+                Tahan <b>Spasi</b> lalu tarik, atau tarik area kosong, untuk menggeser halaman.
               </p>
-            </Card>
+            </PanelSection>
+
             {result ? (
-              <Card className="border-ink bg-paper p-4 shadow-[4px_4px_0_#ff2d2d]" role="status">
-                <p className="text-sm font-black text-ink">Versi baru tersimpan</p>
-                <p className="mt-1 text-xs leading-5 text-muted">Original tidak berubah dan hasilnya muncul di Recent Files.</p>
-                <div className="mt-3 flex flex-wrap gap-2">
+              <PanelSection title="Versi baru tersimpan">
+                <p className="text-xs leading-5 text-muted">Original tidak berubah dan hasilnya muncul di Recent Files.</p>
+                <div className="flex gap-2">
                   <Button asChild className="grow"><a href={result.downloadUrl} download={result.outputName ?? session.data.session.filename}><Download className="size-4" /> Unduh</a></Button>
-                  <Button type="button" variant="ghost" aria-label="Tutup ringkasan" onClick={() => { setResult(undefined); exportMutation.reset(); }}><RotateCcw className="size-4" /></Button>
+                  <IconButton aria-label="Tutup ringkasan" onClick={() => { setResult(undefined); exportMutation.reset(); }}><RotateCcw className="size-4" /></IconButton>
                 </div>
-              </Card>
+              </PanelSection>
             ) : null}
           </aside>
         ) : null}

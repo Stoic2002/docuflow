@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/local/pdf-web-studio/apps/api/internal/config"
 	"github.com/local/pdf-web-studio/apps/api/internal/documents"
@@ -55,6 +56,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, store *storage.Store, detector *
 			router.Get("/content", server.getDocumentContent)
 			router.Get("/versions", server.listDocumentVersions)
 			router.Get("/versions/{versionId}/content", server.getDocumentVersionContent)
+			router.Get("/fonts", server.getDocumentFonts)
 			router.Get("/metadata", server.getDocumentMetadata)
 			router.Patch("/metadata", server.updateDocumentMetadata)
 			router.Get("/pages/{page}/thumbnail", server.getPageThumbnail)
@@ -158,6 +160,28 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		"convertImageToPdf":         baseAvailable,
 		"limits":                    map[string]int64{"maxUploadBytes": s.config.MaxUploadBytes},
 	})
+}
+
+// getDocumentFonts reports the typefaces a PDF already carries, paired by the
+// client against the registry so a missing one can be named precisely.
+func (s *Server) getDocumentFonts(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "documentId"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_DOCUMENT_ID", "Document ID is invalid", nil)
+		return
+	}
+	if !s.requireTool(w, "pdffonts") {
+		return
+	}
+	fonts, err := s.documents.DocumentFonts(r.Context(), id)
+	if err != nil {
+		s.writeDocumentError(w, r, err)
+		return
+	}
+	if fonts == nil {
+		fonts = []processing.DocumentFont{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fonts": fonts})
 }
 
 // listFonts exposes the embeddable fonts an editor may offer, plus the files

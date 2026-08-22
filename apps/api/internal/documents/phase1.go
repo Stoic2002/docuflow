@@ -556,6 +556,16 @@ func (s *Service) AddHeaderFooter(ctx context.Context, documentID uuid.UUID, opt
 	return s.applyOverlay(ctx, document, parent, input, "header-footer", map[string]any{"pageRange": options.PageRange, "skipFirst": options.SkipFirst, "beforeBytes": parent.ByteSize}, pages, true)
 }
 
+// DocumentFonts lists the typefaces the PDF already uses, so the editor can
+// tell the user which of them the server can actually reproduce.
+func (s *Service) DocumentFonts(ctx context.Context, documentID uuid.UUID) ([]processing.DocumentFont, error) {
+	_, _, input, err := s.operationInput(ctx, documentID)
+	if err != nil {
+		return nil, err
+	}
+	return processing.DocumentFonts(ctx, input, "")
+}
+
 func (s *Service) Metadata(ctx context.Context, documentID uuid.UUID) (processing.PDFMetadata, error) {
 	_, _, input, err := s.operationInput(ctx, documentID)
 	if err != nil {
