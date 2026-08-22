@@ -14,9 +14,26 @@ import (
 	"unicode/utf8"
 )
 
+// maxShapePoints bounds a single freehand stroke so an oversized editor payload
+// cannot inflate a content stream without limit.
+const maxShapePoints = 4096
+
 type PageSize struct {
 	Width  float64
 	Height float64
+}
+
+// RGB holds device colour components in the 0..1 range PDF operators expect.
+// The zero value is black, so existing callers keep their previous output.
+type RGB struct {
+	R float64
+	G float64
+	B float64
+}
+
+type Point struct {
+	X float64
+	Y float64
 }
 
 type TextOverlay struct {
@@ -27,6 +44,7 @@ type TextOverlay struct {
 	Opacity  float64
 	Rotation float64
 	Align    string
+	Color    RGB
 }
 
 type ImageOverlay struct {
@@ -39,10 +57,33 @@ type ImageOverlay struct {
 	Rotation float64
 }
 
+type ShapeKind string
+
+const (
+	ShapeRectangle ShapeKind = "rectangle"
+	ShapeEllipse   ShapeKind = "ellipse"
+	ShapeLine      ShapeKind = "line"
+	ShapePolyline  ShapeKind = "polyline"
+)
+
+// ShapeOverlay draws vector geometry. Rectangle and ellipse read Points as two
+// opposite corners of their bounding box; line and polyline read Points as the
+// path itself. A nil Fill leaves the interior untouched.
+type ShapeOverlay struct {
+	Kind        ShapeKind
+	Points      []Point
+	Stroke      RGB
+	StrokeWidth float64
+	Fill        *RGB
+	Opacity     float64
+	Rotation    float64
+}
+
 type OverlayPage struct {
 	PageSize
-	Texts []TextOverlay
-	Image *ImageOverlay
+	Texts  []TextOverlay
+	Images []ImageOverlay
+	Shapes []ShapeOverlay
 }
 
 var pageSizeLine = regexp.MustCompile(`^Page\s+([0-9]+) size:\s+([0-9.]+) x ([0-9.]+) pts`)
@@ -89,7 +130,7 @@ func PDFPageSizes(ctx context.Context, inputPath, password string) ([]PageSize, 
 		return nil, fmt.Errorf("read PDF page sizes: %w", err)
 	}
 	if len(sizes) == 0 {
-		return nil, errors.New("PDF page dimensions are unavailable")
+		return nil, errors.New("PDF document dimensions are unavailable")
 	}
 	return sizes, nil
 }
@@ -147,45 +188,223 @@ func clampOpacity(value float64) float64 {
 	return value
 }
 
-func overlayContent(page OverlayPage) string {
-	var content strings.Builder
-	for _, text := range page.Texts {
-		fontSize := text.FontSize
-		if fontSize < 6 {
-			fontSize = 6
-		}
-		if fontSize > 144 {
-			fontSize = 144
-		}
-		x := text.X
-		estimatedWidth := float64(utf8.RuneCountInString(text.Text)) * fontSize * 0.52
-		if text.Align == "center" {
-			x -= estimatedWidth / 2
-		}
-		if text.Align == "right" {
-			x -= estimatedWidth
-		}
-		angle := text.Rotation * math.Pi / 180
-		cosine, sine := math.Cos(angle), math.Sin(angle)
-		fmt.Fprintf(&content, "q /GS%.0f gs BT /F1 %.3f Tf 0 0 0 rg %.6f %.6f %.6f %.6f %.3f %.3f Tm (%s) Tj ET Q\n",
-			math.Round(clampOpacity(text.Opacity)*1000), fontSize, cosine, sine, -sine, cosine, x, text.Y, escapePDFText(text.Text))
+func clampComponent(value float64) float64 {
+	if value < 0 || math.IsNaN(value) {
+		return 0
 	}
-	if image := page.Image; image != nil {
-		angle := image.Rotation * math.Pi / 180
-		cosine, sine := math.Cos(angle), math.Sin(angle)
-		a, b := image.Width*cosine, image.Width*sine
-		c, d := -image.Height*sine, image.Height*cosine
-		e := image.CenterX - (a+c)/2
-		f := image.CenterY - (b+d)/2
-		fmt.Fprintf(&content, "q /GS%.0f gs %.6f %.6f %.6f %.6f %.3f %.3f cm /Im0 Do Q\n",
-			math.Round(clampOpacity(image.Opacity)*1000), a, b, c, d, e, f)
+	if value > 1 {
+		return 1
+	}
+	return value
+}
+
+// colorOperator renders a colour with the requested operator: "rg" fills and
+// "RG" strokes.
+func colorOperator(color RGB, operator string) string {
+	return fmt.Sprintf("%.4f %.4f %.4f %s", clampComponent(color.R), clampComponent(color.G), clampComponent(color.B), operator)
+}
+
+func clampStrokeWidth(value float64) float64 {
+	if value < 0.1 {
+		return 0.1
+	}
+	if value > 72 {
+		return 72
+	}
+	return value
+}
+
+func opacityKey(value float64) int { return int(math.Round(clampOpacity(value) * 1000)) }
+
+// rotationMatrix builds a cm transform that rotates around an anchor point
+// rather than the page origin.
+func rotationMatrix(degrees, anchorX, anchorY float64) string {
+	angle := degrees * math.Pi / 180
+	cosine, sine := math.Cos(angle), math.Sin(angle)
+	return fmt.Sprintf("%.6f %.6f %.6f %.6f %.3f %.3f cm",
+		cosine, sine, -sine, cosine,
+		anchorX-cosine*anchorX+sine*anchorY,
+		anchorY-sine*anchorX-cosine*anchorY)
+}
+
+func boundingBox(points []Point) (minX, minY, maxX, maxY float64) {
+	minX, minY = points[0].X, points[0].Y
+	maxX, maxY = points[0].X, points[0].Y
+	for _, point := range points[1:] {
+		minX, maxX = math.Min(minX, point.X), math.Max(maxX, point.X)
+		minY, maxY = math.Min(minY, point.Y), math.Max(maxY, point.Y)
+	}
+	return minX, minY, maxX, maxY
+}
+
+func validateShape(shape ShapeOverlay) error {
+	switch shape.Kind {
+	case ShapeRectangle, ShapeEllipse, ShapeLine:
+		if len(shape.Points) != 2 {
+			return fmt.Errorf("%s requires exactly two points", shape.Kind)
+		}
+	case ShapePolyline:
+		if len(shape.Points) < 2 {
+			return errors.New("polyline requires at least two points")
+		}
+	default:
+		return fmt.Errorf("unsupported shape %q", shape.Kind)
+	}
+	if len(shape.Points) > maxShapePoints {
+		return fmt.Errorf("shape exceeds %d points", maxShapePoints)
+	}
+	for _, point := range shape.Points {
+		if math.IsNaN(point.X) || math.IsNaN(point.Y) || math.IsInf(point.X, 0) || math.IsInf(point.Y, 0) {
+			return errors.New("shape points must be finite")
+		}
+	}
+	return nil
+}
+
+// paintOperator picks the PDF painting operator for the requested fill and
+// stroke combination. Open paths are only ever stroked.
+func paintOperator(shape ShapeOverlay, closed bool) string {
+	filled := closed && shape.Fill != nil
+	stroked := shape.StrokeWidth > 0
+	switch {
+	case filled && stroked:
+		return "B"
+	case filled:
+		return "f"
+	case stroked:
+		return "S"
+	default:
+		return "n"
+	}
+}
+
+// ellipsePath approximates an ellipse with the four cubic Béziers that the
+// standard kappa constant makes visually exact.
+func ellipsePath(centerX, centerY, radiusX, radiusY float64) string {
+	const kappa = 0.5522847498
+	offsetX, offsetY := radiusX*kappa, radiusY*kappa
+	var path strings.Builder
+	fmt.Fprintf(&path, "%.3f %.3f m\n", centerX+radiusX, centerY)
+	fmt.Fprintf(&path, "%.3f %.3f %.3f %.3f %.3f %.3f c\n", centerX+radiusX, centerY+offsetY, centerX+offsetX, centerY+radiusY, centerX, centerY+radiusY)
+	fmt.Fprintf(&path, "%.3f %.3f %.3f %.3f %.3f %.3f c\n", centerX-offsetX, centerY+radiusY, centerX-radiusX, centerY+offsetY, centerX-radiusX, centerY)
+	fmt.Fprintf(&path, "%.3f %.3f %.3f %.3f %.3f %.3f c\n", centerX-radiusX, centerY-offsetY, centerX-offsetX, centerY-radiusY, centerX, centerY-radiusY)
+	fmt.Fprintf(&path, "%.3f %.3f %.3f %.3f %.3f %.3f c\n", centerX+offsetX, centerY-radiusY, centerX+radiusX, centerY-offsetY, centerX+radiusX, centerY)
+	return path.String()
+}
+
+func shapeContent(shape ShapeOverlay) string {
+	var content strings.Builder
+	minX, minY, maxX, maxY := boundingBox(shape.Points)
+	centerX, centerY := (minX+maxX)/2, (minY+maxY)/2
+	fmt.Fprintf(&content, "q /GS%d gs\n", opacityKey(shape.Opacity))
+	if shape.Rotation != 0 {
+		fmt.Fprintf(&content, "%s\n", rotationMatrix(shape.Rotation, centerX, centerY))
+	}
+	if shape.Fill != nil {
+		fmt.Fprintf(&content, "%s\n", colorOperator(*shape.Fill, "rg"))
+	}
+	if shape.StrokeWidth > 0 {
+		fmt.Fprintf(&content, "%s\n%.3f w\n1 J 1 j\n", colorOperator(shape.Stroke, "RG"), clampStrokeWidth(shape.StrokeWidth))
+	}
+	switch shape.Kind {
+	case ShapeRectangle:
+		fmt.Fprintf(&content, "%.3f %.3f %.3f %.3f re\n%s\n", minX, minY, maxX-minX, maxY-minY, paintOperator(shape, true))
+	case ShapeEllipse:
+		content.WriteString(ellipsePath(centerX, centerY, (maxX-minX)/2, (maxY-minY)/2))
+		fmt.Fprintf(&content, "%s\n", paintOperator(shape, true))
+	case ShapeLine, ShapePolyline:
+		fmt.Fprintf(&content, "%.3f %.3f m\n", shape.Points[0].X, shape.Points[0].Y)
+		for _, point := range shape.Points[1:] {
+			fmt.Fprintf(&content, "%.3f %.3f l\n", point.X, point.Y)
+		}
+		fmt.Fprintf(&content, "%s\n", paintOperator(shape, false))
+	}
+	content.WriteString("Q\n")
+	return content.String()
+}
+
+func textContent(text TextOverlay) string {
+	fontSize := text.FontSize
+	if fontSize < 6 {
+		fontSize = 6
+	}
+	if fontSize > 144 {
+		fontSize = 144
+	}
+	x := text.X
+	estimatedWidth := float64(utf8.RuneCountInString(text.Text)) * fontSize * 0.52
+	if text.Align == "center" {
+		x -= estimatedWidth / 2
+	}
+	if text.Align == "right" {
+		x -= estimatedWidth
+	}
+	angle := text.Rotation * math.Pi / 180
+	cosine, sine := math.Cos(angle), math.Sin(angle)
+	return fmt.Sprintf("q /GS%d gs BT /F1 %.3f Tf %s %.6f %.6f %.6f %.6f %.3f %.3f Tm (%s) Tj ET Q\n",
+		opacityKey(text.Opacity), fontSize, colorOperator(text.Color, "rg"),
+		cosine, sine, -sine, cosine, x, text.Y, escapePDFText(text.Text))
+}
+
+func imageContent(image ImageOverlay, name string) string {
+	angle := image.Rotation * math.Pi / 180
+	cosine, sine := math.Cos(angle), math.Sin(angle)
+	a, b := image.Width*cosine, image.Width*sine
+	c, d := -image.Height*sine, image.Height*cosine
+	e := image.CenterX - (a+c)/2
+	f := image.CenterY - (b+d)/2
+	return fmt.Sprintf("q /GS%d gs %.6f %.6f %.6f %.6f %.3f %.3f cm /%s Do Q\n",
+		opacityKey(image.Opacity), a, b, c, d, e, f, name)
+}
+
+// overlayContent paints shapes first, then images, then text, so annotations
+// read in the order an editor stacks them.
+func overlayContent(page OverlayPage, imageNames map[string]string) string {
+	var content strings.Builder
+	for _, shape := range page.Shapes {
+		content.WriteString(shapeContent(shape))
+	}
+	for _, image := range page.Images {
+		content.WriteString(imageContent(image, imageNames[image.Image.Path]))
+	}
+	for _, text := range page.Texts {
+		content.WriteString(textContent(text))
 	}
 	return content.String()
+}
+
+// imageRegistry embeds each distinct source image once, however many pages
+// place it.
+type imageRegistry struct {
+	order  []JPEGInput
+	names  map[string]string
+	object map[string]int
+}
+
+func collectImages(pages []OverlayPage) *imageRegistry {
+	registry := &imageRegistry{names: map[string]string{}, object: map[string]int{}}
+	for _, page := range pages {
+		for _, image := range page.Images {
+			if _, seen := registry.names[image.Image.Path]; seen {
+				continue
+			}
+			registry.names[image.Image.Path] = fmt.Sprintf("Im%d", len(registry.order))
+			registry.order = append(registry.order, image.Image)
+		}
+	}
+	return registry
 }
 
 func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 	if len(pages) == 0 {
 		return errors.New("overlay requires at least one page")
+	}
+	for _, page := range pages {
+		for _, shape := range page.Shapes {
+			if err := validateShape(shape); err != nil {
+				return err
+			}
+		}
 	}
 	if err := output.Truncate(0); err != nil {
 		return err
@@ -194,27 +413,25 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 		return err
 	}
 	opacities := map[int]int{}
-	hasImage := false
-	var image JPEGInput
 	for _, page := range pages {
 		for _, item := range page.Texts {
-			opacities[int(math.Round(clampOpacity(item.Opacity)*1000))] = 0
+			opacities[opacityKey(item.Opacity)] = 0
 		}
-		if page.Image != nil {
-			opacities[int(math.Round(clampOpacity(page.Image.Opacity)*1000))] = 0
-			if !hasImage {
-				hasImage, image = true, page.Image.Image
-			}
+		for _, item := range page.Shapes {
+			opacities[opacityKey(item.Opacity)] = 0
+		}
+		for _, item := range page.Images {
+			opacities[opacityKey(item.Opacity)] = 0
 		}
 	}
+	images := collectImages(pages)
 	nextID := 4 + len(pages)*2
 	for opacity := range opacities {
 		opacities[opacity] = nextID
 		nextID++
 	}
-	imageID := 0
-	if hasImage {
-		imageID = nextID
+	for _, image := range images.order {
+		images.object[image.Path] = nextID
 		nextID++
 	}
 	writer := &pdfWriter{file: output, offsets: make([]int64, nextID)}
@@ -243,11 +460,11 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 			fmt.Fprintf(&resources, " /GS%d %d 0 R", opacity, id)
 		}
 		resources.WriteString(" >>")
-		if hasImage {
-			fmt.Fprintf(&resources, " /XObject << /Im0 %d 0 R >>", imageID)
+		if pageObjects := pageImageObjects(page, images); pageObjects != "" {
+			fmt.Fprintf(&resources, " /XObject <<%s >>", pageObjects)
 		}
 		resources.WriteString(" >>")
-		content := overlayContent(page)
+		content := overlayContent(page, images.names)
 		writer.startObject(pageID)
 		writer.write(fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.3f %.3f] /Resources %s /Contents %d 0 R >>", page.Width, page.Height, resources.String(), contentID))
 		writer.endObject()
@@ -260,7 +477,7 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 		writer.write(fmt.Sprintf("<< /Type /ExtGState /ca %.3f /CA %.3f >>", float64(opacity)/1000, float64(opacity)/1000))
 		writer.endObject()
 	}
-	if hasImage {
+	for _, image := range images.order {
 		stat, err := os.Stat(image.Path)
 		if err != nil {
 			return err
@@ -269,7 +486,7 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 		if image.ColorSpace == JPEGCMYK {
 			decode = " /Decode [1 0 1 0 1 0 1 0]"
 		}
-		writer.startObject(imageID)
+		writer.startObject(images.object[image.Path])
 		writer.write(fmt.Sprintf("<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /%s /BitsPerComponent 8 /Filter /DCTDecode /Length %d%s >>\nstream\n", image.Width, image.Height, image.ColorSpace, stat.Size(), decode))
 		writer.copyFile(image.Path)
 		writer.write("\nendstream")
@@ -291,4 +508,19 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 		return writer.err
 	}
 	return output.Sync()
+}
+
+// pageImageObjects lists only the XObjects a page actually draws.
+func pageImageObjects(page OverlayPage, images *imageRegistry) string {
+	var resources strings.Builder
+	listed := map[string]bool{}
+	for _, image := range page.Images {
+		path := image.Image.Path
+		if listed[path] {
+			continue
+		}
+		listed[path] = true
+		fmt.Fprintf(&resources, " /%s %d 0 R", images.names[path], images.object[path])
+	}
+	return resources.String()
 }

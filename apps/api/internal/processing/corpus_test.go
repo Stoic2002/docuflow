@@ -23,7 +23,7 @@ func writeCorpusPDF(t *testing.T, path string, sizes []PageSize, imageInput *JPE
 	for i, size := range sizes {
 		pages[i] = OverlayPage{PageSize: size, Texts: []TextOverlay{{Text: fmt.Sprintf("Deterministic fixture page %d", i+1), X: 36, Y: size.Height - 48, FontSize: 12, Opacity: 1}}}
 		if imageInput != nil {
-			pages[i].Image = &ImageOverlay{Image: *imageInput, CenterX: size.Width / 2, CenterY: size.Height / 2, Width: 120, Height: 80, Opacity: 1}
+			pages[i].Images = []ImageOverlay{{Image: *imageInput, CenterX: size.Width / 2, CenterY: size.Height / 2, Width: 120, Height: 80, Opacity: 1}}
 		}
 	}
 	if err := WriteOverlayPDF(file, pages); err != nil {

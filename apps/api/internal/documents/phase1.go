@@ -451,7 +451,7 @@ func (s *Service) WatermarkImage(ctx context.Context, documentID uuid.UUID, imag
 				height, width = maxHeight, maxHeight*ratio
 			}
 			x, y, _ := overlayPoint(size, options.Horizontal, options.Vertical, 36)
-			pages[i].Image = &processing.ImageOverlay{Image: image, CenterX: x, CenterY: y, Width: width, Height: height, Opacity: options.Opacity, Rotation: options.Rotation}
+			pages[i].Images = []processing.ImageOverlay{{Image: image, CenterX: x, CenterY: y, Width: width, Height: height, Opacity: options.Opacity, Rotation: options.Rotation}}
 		}
 	}
 	return s.applyOverlay(ctx, document, parent, input, "watermark", map[string]any{"type": "image", "imageName": image.Name, "pageRange": options.PageRange, "foreground": options.Foreground, "beforeBytes": parent.ByteSize}, pages, options.Foreground)
