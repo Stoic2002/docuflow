@@ -8,11 +8,19 @@ export const queryKeys = {
   document: (id: string) => ["documents", id] as const,
   versions: (id: string) => ["documents", id, "versions"] as const,
   editSession: (id: string) => ["edit-sessions", id] as const,
+  fonts: ["fonts"] as const,
 };
 
 export const capabilitiesQuery = queryOptions({
   queryKey: queryKeys.capabilities,
   queryFn: ({ signal }) => api.capabilities(signal),
+});
+
+export const fontsQuery = queryOptions({
+  queryKey: queryKeys.fonts,
+  queryFn: ({ signal }) => api.fonts(signal),
+  // The registry is read once at server start, so this never goes stale mid-session.
+  staleTime: Infinity,
 });
 
 export const documentsQuery = queryOptions({

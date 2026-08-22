@@ -1,7 +1,7 @@
 import { Card } from "@pdf-studio/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Combine, FileClock, FileKey, FileLock2, FileOutput, FileSearch, Hash, ListRestart, Minimize2, ScanText, Split, Stamp, TextCursorInput } from "lucide-react";
+import { ArrowUpRight, Combine, FileClock, FileKey, FileLock2, FileOutput, FileSearch, Hash, ListRestart, Minimize2, PenLine, ScanText, Split, Stamp, TextCursorInput } from "lucide-react";
 import { capabilitiesQuery } from "../../api/queries";
 import { PageHeading } from "../../components/page-heading";
 
@@ -12,6 +12,7 @@ const groups = [
     { to: "/split", label: "Split PDF", detail: "Create individual PDFs from selected pages.", icon: Split, feature: "organize" },
   ]},
   { name: "Edit & enhance", tools: [
+    { to: "/edit", label: "Edit PDF", detail: "Add text, shapes, freehand marks, and images on top of a page.", icon: PenLine, feature: "annotate" },
     { to: "/watermark", label: "Watermark", detail: "Add text presets or a JPEG logo with page-aware placement.", icon: Stamp, feature: "watermark" },
     { to: "/page-numbers", label: "Page Numbers", detail: "Number a range, skip a cover, and customize the format.", icon: Hash, feature: "pageNumbers" },
     { to: "/header-footer", label: "Header & Footer", detail: "Use left, center, and right text with reusable variables.", icon: TextCursorInput, feature: "headerFooter" },

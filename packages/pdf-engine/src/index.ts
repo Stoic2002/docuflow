@@ -16,10 +16,16 @@ export interface PdfEngine {
   destroy(): Promise<void>;
 }
 
+export type PdfPageSize = { width: number; height: number };
+
 export interface ViewablePdfEngine extends PdfEngine {
   getViewerSource(): string | undefined;
   detectTextLayer(samplePages?: number): Promise<"present" | "absent" | "unknown">;
   renderPage(pageNumber: number, canvas: HTMLCanvasElement, maxWidth?: number): Promise<void>;
+  /** Unscaled page box in PDF points, which the editor uses to map coordinates. */
+  getPageSize(pageNumber: number): Promise<PdfPageSize>;
+  /** Renders at an explicit scale rather than fitting a width. */
+  renderPageAtScale(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Promise<void>;
 }
 
 /**
@@ -100,7 +106,20 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
     if (!this.document) throw new Error("PDF structure is unavailable for thumbnails");
     const page = await this.document.getPage(pageNumber);
     const natural = page.getViewport({ scale: 1 });
-    const viewport = page.getViewport({ scale: maxWidth / natural.width });
+    await this.renderPageAtScale(pageNumber, canvas, maxWidth / natural.width);
+  }
+
+  async getPageSize(pageNumber: number): Promise<PdfPageSize> {
+    if (!this.document) throw new Error("PDF structure is unavailable");
+    const page = await this.document.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1 });
+    return { width: viewport.width, height: viewport.height };
+  }
+
+  async renderPageAtScale(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Promise<void> {
+    if (!this.document) throw new Error("PDF structure is unavailable");
+    const page = await this.document.getPage(pageNumber);
+    const viewport = page.getViewport({ scale });
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
     await page.render({ canvas, viewport }).promise;
@@ -116,11 +135,31 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
   }
 }
 
-export type PdfEngineProvider = "fallback" | "apryse" | "nutrient";
+/**
+ * Adds annotation to the browser-native engine. Objects are flattened by the Go
+ * API, not in the browser, so export() stays unsupported here: this engine can
+ * describe edits but cannot produce edited PDF bytes on its own.
+ */
+export class OverlayEditorEngine extends FallbackViewerEngine {
+  private dirty = false;
+
+  markDirty(dirty: boolean): void {
+    this.dirty = dirty;
+  }
+
+  override isDirty(): boolean {
+    return this.dirty;
+  }
+
+  override supports(capability: PdfCapability): boolean {
+    return capability === "view" || capability === "annotate";
+  }
+}
+
+export type PdfEngineProvider = "fallback" | "overlay" | "apryse" | "nutrient";
 
 export function createPdfEngine(provider: PdfEngineProvider = "fallback"): PdfEngine {
-  if (provider !== "fallback") {
-    throw new Error(`${provider} is not configured; use the fallback viewer`);
-  }
-  return new FallbackViewerEngine();
+  if (provider === "fallback") return new FallbackViewerEngine();
+  if (provider === "overlay") return new OverlayEditorEngine();
+  throw new Error(`${provider} is not configured; use the fallback viewer`);
 }

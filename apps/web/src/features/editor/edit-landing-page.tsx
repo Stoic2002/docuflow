@@ -16,16 +16,16 @@ export function EditLandingPage() {
   const uploadAvailable = capabilities.data?.features.upload ?? false;
   return (
     <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
-      <PageHeading eyebrow="Edit PDF" title="Mulai dari file Anda" description="Unggah langsung untuk membuka workspace. Tidak perlu memilih dari Recent Files." align="center" />
+      <PageHeading eyebrow="Edit PDF" title="Mulai dari file Anda" description="Unggah langsung untuk membuka editor. Tambahkan teks, bentuk, coretan, dan gambar di atas halaman. Tidak perlu memilih dari Recent Files." align="center" />
       <div className="mt-10 space-y-5">
         {capabilities.data && !capabilities.data.nativeContentEditing ? (
-          <CapabilityNotice title="Preview mode" reason="Native content editing belum tersedia karena provider komersial belum dikonfigurasi. Anda tetap dapat membuka, memeriksa halaman, dan mengunduh original." />
+          <CapabilityNotice title="Menambah objek, bukan mengubah teks asli" reason="Anda dapat menambahkan teks, bentuk, coretan, dan gambar di atas halaman, lalu menyimpannya sebagai versi baru. Mengubah teks yang sudah ada di dalam PDF masih memerlukan SDK komersial yang belum dikonfigurasi." />
         ) : null}
         <ToolDropzone
           onFiles={(files) => files[0] && mutation.mutate(files[0])}
           disabled={!uploadAvailable || mutation.isPending}
           disabledReason={capabilities.isPending ? "Memeriksa backend…" : !uploadAvailable ? "Database atau storage belum tersedia." : undefined}
-          label="Pilih PDF untuk Preview"
+          label="Pilih PDF untuk diedit"
         />
         {mutation.isPending ? <ProcessingState label="Membuat edit session…" /> : null}
         {mutation.isError ? <Card className="border-accent bg-accent-soft p-5 text-sm text-ink" role="alert">Tidak dapat membuka PDF: {userFacingError(mutation.error)}</Card> : null}

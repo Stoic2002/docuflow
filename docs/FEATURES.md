@@ -17,8 +17,8 @@ Dokumen ini menjelaskan fitur yang tersedia pada vertical slice lokal Docuflow, 
 | Fitur | Route utama | Status | Dependency |
 | --- | --- | --- | --- |
 | Dashboard | `/` | Tersedia | API, PostgreSQL, storage lokal |
-| Edit PDF (viewer) | `/edit` | Preview | PDF.js; editing native memerlukan SDK komersial |
-| Overlay editor (API) | `POST /api/edit-sessions/{id}/export` | Lanjutan | qpdf, pdfinfo; kanvas UI belum ada |
+| Edit PDF (overlay editor) | `/edit` | Bergantung capability | PDF.js, qpdf, pdfinfo |
+| Edit teks asli di dalam PDF | `/edit` | Belum tersedia | Memerlukan SDK komersial |
 | Merge PDF | `/merge` | Bergantung capability | qpdf |
 | Split PDF | `/split` | Bergantung capability | qpdf |
 | Compress PDF | `/compress` | Bergantung capability | qpdf |
@@ -56,7 +56,17 @@ Yang sudah tersedia tanpa SDK komersial adalah **overlay editing** — menambahk
 
 ## Overlay editor
 
-Backend sudah dapat meratakan satu dokumen editor ke atas PDF dan menyimpannya sebagai versi baru lewat `POST /api/edit-sessions/{sessionId}/export`. Kanvas interaktifnya **belum dibangun**, jadi fitur ini belum bisa dipakai dari UI.
+`/edit` menerima satu PDF lewat upload langsung, lalu membuka kanvas editor. Objek yang ditambahkan diratakan ke atas halaman oleh backend dan disimpan sebagai versi baru lewat `POST /api/edit-sessions/{sessionId}/export`.
+
+Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atasnya. Tersedia:
+
+- tool Pilih, Teks, Kotak, Elips, Garis, Gambar bebas, dan Sisipkan JPG;
+- geser objek dengan tool Pilih;
+- panel Properti untuk warna, isi, ketebalan garis, ukuran teks, font, perataan, opacity, dan rotasi;
+- undo/redo, hapus objek terpilih, navigasi halaman, dan zoom;
+- pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi.
+
+Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
 
 Objek yang didukung:
 

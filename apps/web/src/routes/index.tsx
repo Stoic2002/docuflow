@@ -8,7 +8,7 @@ import { ErrorState, LoadingState } from "../components/async-state";
 export const Route = createFileRoute("/")({ component: HomePage });
 
 const quickTools = [
-  { to: "/edit", label: "Edit PDF", detail: "Buka file dalam workspace Preview yang aman.", icon: FilePenLine, number: "01" },
+  { to: "/edit", label: "Edit PDF", detail: "Tambahkan teks, bentuk, dan gambar di atas halaman.", icon: FilePenLine, number: "01" },
   { to: "/merge", label: "Merge", detail: "Gabungkan beberapa PDF sesuai urutan Anda.", icon: Combine, number: "02" },
   { to: "/split", label: "Split", detail: "Pilih halaman dan unduh satu PDF per halaman.", icon: Split, number: "03" },
   { to: "/compress", label: "Compress", detail: "Optimalkan struktur PDF tanpa menimpa original.", icon: Minimize2, number: "04" },
