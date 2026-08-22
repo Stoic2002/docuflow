@@ -71,6 +71,14 @@ describe("EditorToolbar", () => {
     expect(state().objects).toHaveLength(0);
   });
 
+  it("offers a highlighter and an arrow among the drawing tools", () => {
+    render(toolbar());
+    fireEvent.click(screen.getByLabelText("Stabilo"));
+    expect(state().tool).toBe("highlight");
+    fireEvent.click(screen.getByLabelText("Panah"));
+    expect(state().tool).toBe("arrow");
+  });
+
   it("reports the highlight toggle as pressed and calls back", () => {
     const onToggleHints = vi.fn();
     render(toolbar({ showHints: true, onToggleHints }));
@@ -168,6 +176,34 @@ describe("PropertiesPanel", () => {
     state().add(text);
     render(<PropertiesPanel fonts={[]} fontsAvailable={false} />);
     expect(screen.getByText(/assets\/fonts\//)).toBeVisible();
+  });
+
+  it("toggles bold, italic, underline, and strikethrough", () => {
+    state().add(text);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    for (const [label, key] of [["Tebal", "bold"], ["Miring", "italic"], ["Garis bawah", "underline"], ["Coret", "strikethrough"]] as const) {
+      fireEvent.click(screen.getByLabelText(label));
+      expect(state().objects[0]).toHaveProperty(key, true);
+    }
+    fireEvent.click(screen.getByLabelText("Tebal"));
+    expect(state().objects[0]).toHaveProperty("bold", false);
+  });
+
+  it("sets alignment from the toggle row rather than a dropdown", () => {
+    state().add(text);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    expect(screen.getByLabelText("Rata kiri")).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByLabelText("Rata tengah"));
+    expect((state().objects[0] as TextObject).align).toBe("center");
+  });
+
+  it("duplicates and reorders the selected object", () => {
+    state().add(box);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    fireEvent.click(screen.getByLabelText("Duplikat"));
+    expect(state().objects).toHaveLength(2);
+    fireEvent.click(screen.getByLabelText("Kirim ke belakang"));
+    expect(state().objects[0].id).toBe(state().selectedId);
   });
 
   it("changes opacity through the slider", () => {

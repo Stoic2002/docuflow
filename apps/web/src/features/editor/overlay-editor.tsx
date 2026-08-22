@@ -11,7 +11,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { capabilitiesQuery, documentFontsQuery, editSessionQuery, fontsQuery, queryKeys } from "../../api/queries";
 import { ErrorState, LoadingState } from "../../components/async-state";
 import { clampZoom, useEditorStore } from "../../stores/editor-store";
-import { CapabilityNotice } from "../tools/tool-components";
 import { EditorCanvas } from "./overlay/editor-canvas";
 import { PropertiesPanel } from "./overlay/properties-panel";
 import { toAnnotationDocument, usedAssets } from "./overlay/serialize";
@@ -233,6 +232,14 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const fonts = fontList.data?.fonts ?? [];
   const canAnnotate = capabilities.data.features.annotate;
   const busy = exportMutation.isPending;
+  // One floating line carries whatever the editor most needs to say right now.
+  const message = !canAnnotate
+    ? (capabilities.data.tools.qpdf.reason ?? "qpdf atau pdfinfo belum tersedia di PATH backend.")
+    : exportMutation.isError
+      ? `Gagal menyimpan: ${userFacingError(exportMutation.error)} Original tetap aman.`
+      : lastLimit
+        ? limitMessages[lastLimit]
+        : notice;
 
   return (
     <main className="flex h-[100dvh] w-full flex-col overflow-hidden bg-canvas">
@@ -280,22 +287,10 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper px-3 py-2 sm:px-4">
-        <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} showHints={showHints} onToggleHints={setShowHints} />
-        {!canAnnotate ? <CapabilityNotice reason={capabilities.data.tools.qpdf.reason ?? "qpdf atau pdfinfo belum tersedia di PATH backend."} /> : null}
-        {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
-        {notice ? <p className="max-w-xl text-xs font-bold leading-5 text-accent" role="status">{notice}</p> : null}
-        {exportMutation.isError ? (
-          <p className="text-xs font-bold text-accent" role="alert">
-            Gagal menyimpan: {userFacingError(exportMutation.error)} Original tetap aman.
-          </p>
-        ) : null}
-      </div>
-
       <div className="relative min-h-0 flex-1">
         <div ref={attachScroll} className="h-full overflow-auto bg-canvas">
           <div
-            className="flex min-h-full w-max min-w-full cursor-grab items-center justify-center p-4 active:cursor-grabbing"
+            className="flex min-h-full w-max min-w-full cursor-grab items-center justify-center px-24 py-6 active:cursor-grabbing"
             onPointerDown={onBackdropPointerDown}
             onPointerMove={onBackdropPointerMove}
             onPointerUp={onBackdropPointerUp}
@@ -319,6 +314,21 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
             )}
           </div>
         </div>
+
+        <div className="absolute left-3 top-3 z-10">
+          <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} showHints={showHints} onToggleHints={setShowHints} />
+        </div>
+
+        {message ? (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-24">
+            <p
+              className="pointer-events-auto max-w-xl rounded-full border border-line bg-paper/95 px-4 py-2 text-xs font-semibold leading-5 text-ink shadow-[0_4px_16px_rgba(23,23,19,.12)] backdrop-blur"
+              role="status"
+            >
+              {message}
+            </p>
+          </div>
+        ) : null}
 
         <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-ink bg-paper/95 px-2 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,.12)] backdrop-blur">

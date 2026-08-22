@@ -35,15 +35,19 @@ type annotationPageRequest struct {
 }
 
 type annotationTextRequest struct {
-	Text     string   `json:"text"`
-	X        float64  `json:"x"`
-	Y        float64  `json:"y"`
-	FontSize float64  `json:"fontSize"`
-	Font     string   `json:"font"`
-	Color    string   `json:"color"`
-	Opacity  *float64 `json:"opacity"`
-	Rotation float64  `json:"rotation"`
-	Align    string   `json:"align"`
+	Text          string   `json:"text"`
+	X             float64  `json:"x"`
+	Y             float64  `json:"y"`
+	FontSize      float64  `json:"fontSize"`
+	Font          string   `json:"font"`
+	Color         string   `json:"color"`
+	Opacity       *float64 `json:"opacity"`
+	Rotation      float64  `json:"rotation"`
+	Align         string   `json:"align"`
+	Bold          bool     `json:"bold"`
+	Italic        bool     `json:"italic"`
+	Underline     bool     `json:"underline"`
+	Strikethrough bool     `json:"strikethrough"`
 }
 
 type annotationPointRequest struct {
@@ -59,6 +63,7 @@ type annotationShapeRequest struct {
 	Fill        *string                  `json:"fill"`
 	Opacity     *float64                 `json:"opacity"`
 	Rotation    float64                  `json:"rotation"`
+	Arrow       bool                     `json:"arrow"`
 }
 
 type annotationImageRequest struct {
@@ -129,6 +134,8 @@ func (request annotationRequest) toDocument() (documents.AnnotationDocument, err
 			converted.Texts = append(converted.Texts, documents.AnnotationText{
 				Text: text.Text, X: text.X, Y: text.Y, FontSize: text.FontSize, Font: text.Font,
 				Color: color, Opacity: opacityOr(text.Opacity), Rotation: text.Rotation, Align: text.Align,
+				Bold: text.Bold, Italic: text.Italic,
+				Underline: text.Underline, Strikethrough: text.Strikethrough,
 			})
 		}
 		for _, shape := range page.Shapes {
@@ -151,6 +158,7 @@ func (request annotationRequest) toDocument() (documents.AnnotationDocument, err
 			converted.Shapes = append(converted.Shapes, documents.AnnotationShape{
 				Kind: shape.Kind, Points: points, Stroke: stroke, StrokeWidth: strokeWidthOr(shape.StrokeWidth),
 				Fill: fill, Opacity: opacityOr(shape.Opacity), Rotation: shape.Rotation,
+				Arrow: shape.Arrow,
 			})
 		}
 		for _, image := range page.Images {

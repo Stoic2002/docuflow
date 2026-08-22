@@ -25,11 +25,15 @@ export function toAnnotationDocument(objects: OverlayObject[]): AnnotationDocume
         x: object.x,
         y: object.y,
         fontSize: object.fontSize,
-        font: object.font || undefined,
+        ...(object.font ? { font: object.font } : {}),
         color: object.color,
         opacity: object.opacity,
         rotation: object.rotation,
         align: object.align,
+        ...(object.bold ? { bold: true } : {}),
+        ...(object.italic ? { italic: true } : {}),
+        ...(object.underline ? { underline: true } : {}),
+        ...(object.strikethrough ? { strikethrough: true } : {}),
       });
       continue;
     }
@@ -42,7 +46,7 @@ export function toAnnotationDocument(objects: OverlayObject[]): AnnotationDocume
         ],
         stroke: object.stroke,
         strokeWidth: object.strokeWidth,
-        fill: object.fill ?? undefined,
+        ...(object.fill ? { fill: object.fill } : {}),
         opacity: object.opacity,
         rotation: object.rotation,
       });
@@ -57,6 +61,7 @@ export function toAnnotationDocument(objects: OverlayObject[]): AnnotationDocume
         strokeWidth: object.strokeWidth,
         opacity: object.opacity,
         rotation: object.rotation,
+        ...(object.arrow ? { arrow: true } : {}),
       });
       continue;
     }

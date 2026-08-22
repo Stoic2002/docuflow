@@ -20,6 +20,8 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_STROKE_WIDTH,
   DEFAULT_TEXT_COLOR,
+  HIGHLIGHT_COLOR,
+  HIGHLIGHT_OPACITY,
   type OverlayObject,
   type OverlayPoint,
   type TextObject,
@@ -226,6 +228,8 @@ export function EditorCanvas({
         return { ...shared, kind: tool, x: origin.x, y: origin.y, width: 0, height: 0, stroke: activeColor, strokeWidth: DEFAULT_STROKE_WIDTH, fill: null };
       case "line":
         return { ...shared, kind: "line", points: [origin, origin], stroke: activeColor, strokeWidth: DEFAULT_STROKE_WIDTH };
+      case "arrow":
+        return { ...shared, kind: "line", points: [origin, origin], stroke: activeColor, strokeWidth: DEFAULT_STROKE_WIDTH, arrow: true };
       case "draw":
         return { ...shared, kind: "draw", points: [origin], stroke: activeColor, strokeWidth: DEFAULT_STROKE_WIDTH };
       default:
@@ -245,6 +249,18 @@ export function EditorCanvas({
     }
     const point = toPdf(event.clientX, event.clientY);
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (tool === "highlight") {
+      const printed = hitDetected(targets, point.x, point.y);
+      if (!printed) return;
+      const box = printed.kind === "run" ? coverBoxFor(printed.run) : ruleCoverBox(printed.rule);
+      add({
+        id: crypto.randomUUID(), kind: "rectangle", page,
+        x: box.x, y: box.y, width: box.width, height: box.height,
+        stroke: HIGHLIGHT_COLOR, strokeWidth: 0, fill: HIGHLIGHT_COLOR,
+        opacity: HIGHLIGHT_OPACITY, rotation: box.rotation,
+      });
+      return;
+    }
     if (tool === "select") {
       const hit = hitTest(objects, page, point.x, point.y);
       if (hit) {
@@ -284,9 +300,10 @@ export function EditorCanvas({
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (gesture.mode === "idle") {
-      if (tool === "select" && !panning) {
+      if ((tool === "select" || tool === "highlight") && !panning) {
         const point = toPdf(event.clientX, event.clientY);
-        setHovered(hitTest(objects, page, point.x, point.y) ? null : hitDetected(targets, point.x, point.y));
+        const ours = tool === "select" && hitTest(objects, page, point.x, point.y);
+        setHovered(ours ? null : hitDetected(targets, point.x, point.y));
       } else if (hovered) {
         setHovered(null);
       }
@@ -342,7 +359,7 @@ export function EditorCanvas({
 
   const cursor = panning
     ? gesture.mode === "pan" ? "grabbing" : "grab"
-    : tool === "select"
+    : tool === "select" || tool === "highlight"
       ? hovered ? "pointer" : "default"
       : "crosshair";
 
@@ -378,7 +395,7 @@ export function EditorCanvas({
           className="pointer-events-none absolute left-0 top-0"
           aria-hidden="true"
         >
-          {(showHints ? targets : hovered ? [hovered] : []).map((target, index) => (
+          {(showHints || tool === "highlight" ? targets : hovered ? [hovered] : []).map((target, index) => (
             <rect
               key={`hint-${index}-${target.box.x}-${target.box.y}`}
               x={target.box.x}

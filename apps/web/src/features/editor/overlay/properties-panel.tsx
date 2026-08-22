@@ -1,5 +1,10 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
-import { ColorInput, Field, PanelSection, RangeInput, SelectInput, TextInput } from "@pdf-studio/ui";
+import { ColorInput, Field, IconButton, PanelSection, RangeInput, SelectInput, TextInput, ToggleGroup, Tooltip } from "@pdf-studio/ui";
+import {
+  AlignCenter, AlignLeft, AlignRight, ArrowDownToLine, ArrowUpToLine,
+  Bold, Copy, Italic, Strikethrough, Underline,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { fontStack, overflowsCover } from "./geometry";
 import { useOverlayStore } from "./store";
 import { MAX_TEXT_LENGTH, type OverlayObject, isBox, isPath } from "./types";
@@ -38,6 +43,24 @@ function labelFor(object: OverlayObject): string {
   }
 }
 
+function Toggle({ label, hint, icon: Icon, active, onClick }: {
+  label: string;
+  hint?: string;
+  icon: LucideIcon;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip content={hint ? <span><b>{label}</b><br />{hint}</span> : label}>
+      <span>
+        <IconButton size="sm" active={active} aria-label={label} onClick={onClick}>
+          <Icon className="size-4" />
+        </IconButton>
+      </span>
+    </Tooltip>
+  );
+}
+
 function Badge({ children }: { children: string }) {
   return (
     <span className="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-muted">{children}</span>
@@ -48,6 +71,9 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
   const objects = useOverlayStore((state) => state.objects);
   const selectedId = useOverlayStore((state) => state.selectedId);
   const update = useOverlayStore((state) => state.update);
+  const duplicate = useOverlayStore((state) => state.duplicate);
+  const bringToFront = useOverlayStore((state) => state.bringToFront);
+  const sendToBack = useOverlayStore((state) => state.sendToBack);
   const selected = objects.find((object) => object.id === selectedId);
 
   if (!selected) {
@@ -92,20 +118,18 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
                 ))}
               </SelectInput>
             </Field>
-            <div className="grid grid-cols-2 gap-2.5">
-              <FontSizeField value={selected.fontSize} onChange={(fontSize) => patch({ fontSize })} />
-              <Field label="Perataan">
-                <SelectInput
-                  aria-label="Perataan"
-                  value={selected.align}
-                  onChange={(event) => patch({ align: event.target.value as "left" | "center" | "right" })}
-                >
-                  <option value="left">Kiri</option>
-                  <option value="center">Tengah</option>
-                  <option value="right">Kanan</option>
-                </SelectInput>
-              </Field>
-            </div>
+            <FontSizeField value={selected.fontSize} onChange={(fontSize) => patch({ fontSize })} />
+            <ToggleGroup label="Gaya">
+              <Toggle label="Tebal" hint="Ditebalkan secara sintetis, bukan diganti dengan font bold sungguhan." icon={Bold} active={Boolean(selected.bold)} onClick={() => patch({ bold: !selected.bold })} />
+              <Toggle label="Miring" hint="Dimiringkan secara sintetis, bukan diganti dengan font italic sungguhan." icon={Italic} active={Boolean(selected.italic)} onClick={() => patch({ italic: !selected.italic })} />
+              <Toggle label="Garis bawah" icon={Underline} active={Boolean(selected.underline)} onClick={() => patch({ underline: !selected.underline })} />
+              <Toggle label="Coret" icon={Strikethrough} active={Boolean(selected.strikethrough)} onClick={() => patch({ strikethrough: !selected.strikethrough })} />
+            </ToggleGroup>
+            <ToggleGroup label="Perataan">
+              <Toggle label="Rata kiri" icon={AlignLeft} active={selected.align === "left"} onClick={() => patch({ align: "left" })} />
+              <Toggle label="Rata tengah" icon={AlignCenter} active={selected.align === "center"} onClick={() => patch({ align: "center" })} />
+              <Toggle label="Rata kanan" icon={AlignRight} active={selected.align === "right"} onClick={() => patch({ align: "right" })} />
+            </ToggleGroup>
             <Field label="Warna teks">
               <ColorInput label="Warna teks" value={selected.color} onChange={(color) => patch({ color })} />
             </Field>
@@ -117,6 +141,17 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
             <Field label="Warna garis">
               <ColorInput label="Warna garis" value={selected.stroke} onChange={(stroke) => patch({ stroke })} />
             </Field>
+            {isPath(selected) ? (
+              <label className="flex items-center gap-2 text-xs font-semibold text-ink">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-accent"
+                  checked={Boolean(selected.arrow)}
+                  onChange={(event) => patch({ arrow: event.target.checked })}
+                />
+                Beri mata panah di ujung
+              </label>
+            ) : null}
             <RangeInput
               label="Tebal garis"
               min={0}
@@ -158,6 +193,14 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
           <RangeInput label="Tinggi" min={4} max={1200} step={1} suffix=" pt" value={selected.height} onChange={(event) => patch({ height: event.currentTarget.valueAsNumber })} />
         </PanelSection>
       ) : null}
+
+      <PanelSection title="Susunan">
+        <div className="flex items-center gap-1">
+          <Toggle label="Duplikat" hint="Salin objek ini sedikit bergeser." icon={Copy} active={false} onClick={() => duplicate(selected.id)} />
+          <Toggle label="Bawa ke depan" hint="Gambar di atas objek lain." icon={ArrowUpToLine} active={false} onClick={() => bringToFront(selected.id)} />
+          <Toggle label="Kirim ke belakang" hint="Gambar di bawah objek lain. Berguna untuk penutup teks." icon={ArrowDownToLine} active={false} onClick={() => sendToBack(selected.id)} />
+        </div>
+      </PanelSection>
 
       <PanelSection title="Tampilan">
         <RangeInput label="Opacity" min={0.05} max={1} step={0.05} value={selected.opacity} onChange={(event) => patch({ opacity: event.currentTarget.valueAsNumber })} />

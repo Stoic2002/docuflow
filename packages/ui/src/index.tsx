@@ -103,14 +103,20 @@ export function PanelSection({ title, aside, children }: { title: string; aside?
 }
 
 export function SelectInput({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  // The chevron comes from CSS on the element itself; see select.form-control.
   return (
-    <div className="relative">
-      <select className={cx("form-control h-9 min-h-0 cursor-pointer appearance-none pr-8 text-sm", className)} {...props}>
-        {children}
-      </select>
-      <svg aria-hidden="true" viewBox="0 0 12 12" className="pointer-events-none absolute right-3 top-1/2 size-3 -translate-y-1/2 text-muted">
-        <path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+    <select className={cx("form-control h-9 min-h-0 cursor-pointer text-sm", className)} {...props}>
+      {children}
+    </select>
+  );
+}
+
+/** A row of small toggles, used for text emphasis and alignment. */
+export function ToggleGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <span className="block text-xs font-semibold text-ink/70">{label}</span>
+      <div className="flex items-center gap-1" role="group" aria-label={label}>{children}</div>
     </div>
   );
 }

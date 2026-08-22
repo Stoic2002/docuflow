@@ -1,23 +1,29 @@
 import { IconButton, Tooltip } from "@pdf-studio/ui";
 import {
-  Circle, Hand, Highlighter, ImagePlus, Minus, MousePointer2,
-  Pencil, Redo2, Square, Trash2, Type, Undo2,
+  ArrowUpRight, Circle, Hand, Highlighter, ImagePlus, Minus, MousePointer2,
+  Pencil, Redo2, ScanLine, Square, Trash2, Type, Undo2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useRef } from "react";
 import { useOverlayStore } from "./store";
 import { MAX_ASSETS, type OverlayTool } from "./types";
 
-const groups: { tool: OverlayTool; label: string; hint: string; icon: LucideIcon }[][] = [
+type Entry = { tool: OverlayTool; label: string; hint: string; icon: LucideIcon };
+
+const groups: Entry[][] = [
   [
     { tool: "select", label: "Pilih", hint: "Klik elemen apa pun di halaman untuk mengambil alih dan mengeditnya. Tarik area kosong untuk menggeser halaman.", icon: MousePointer2 },
     { tool: "hand", label: "Geser halaman", hint: "Tarik untuk menggeser. Menahan Spasi memberi efek yang sama dari tool mana pun.", icon: Hand },
   ],
   [
     { tool: "text", label: "Teks", hint: "Klik di halaman untuk menaruh teks baru, lalu langsung ketik.", icon: Type },
+    { tool: "highlight", label: "Stabilo", hint: "Klik teks atau garis yang tersorot untuk menandainya dengan warna transparan.", icon: Highlighter },
+  ],
+  [
     { tool: "rectangle", label: "Kotak", hint: "Tarik untuk menggambar kotak.", icon: Square },
     { tool: "ellipse", label: "Elips", hint: "Tarik untuk menggambar elips.", icon: Circle },
     { tool: "line", label: "Garis", hint: "Tarik untuk menggambar garis lurus.", icon: Minus },
+    { tool: "arrow", label: "Panah", hint: "Tarik untuk menggambar garis bermata panah.", icon: ArrowUpRight },
     { tool: "draw", label: "Coret bebas", hint: "Tarik untuk mencoret dengan tangan bebas.", icon: Pencil },
   ],
 ];
@@ -37,9 +43,13 @@ function ToolButton({ active, label, hint, icon: Icon, disabled, onClick }: {
 }
 
 function Divider() {
-  return <span className="mx-1 h-7 w-px shrink-0 bg-line" aria-hidden="true" />;
+  return <span className="my-0.5 h-px w-7 shrink-0 self-center bg-line" aria-hidden="true" />;
 }
 
+/**
+ * A vertical rail rather than a top bar: the canvas is taller than it is wide,
+ * so height is the scarce dimension and the tools sit beside it.
+ */
 export function EditorToolbar({ onPickImage, disabled, showHints, onToggleHints }: {
   onPickImage: (file: File) => void;
   disabled: boolean;
@@ -58,9 +68,9 @@ export function EditorToolbar({ onPickImage, disabled, showHints, onToggleHints 
   const assetCount = useOverlayStore((state) => Object.keys(state.assets).length);
 
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-ink bg-paper px-2 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,.06)]">
+    <div className="flex flex-col gap-1 rounded-2xl border border-line bg-paper/95 p-1.5 shadow-[0_6px_24px_rgba(23,23,19,.12)] backdrop-blur">
       {groups.map((group, index) => (
-        <span key={index} className="flex items-center gap-1">
+        <div key={index} className="flex flex-col gap-1">
           {index > 0 ? <Divider /> : null}
           {group.map(({ tool: kind, label, hint, icon }) => (
             <ToolButton
@@ -73,7 +83,7 @@ export function EditorToolbar({ onPickImage, disabled, showHints, onToggleHints 
               onClick={() => setTool(kind)}
             />
           ))}
-        </span>
+        </div>
       ))}
 
       <ToolButton
@@ -115,7 +125,7 @@ export function EditorToolbar({ onPickImage, disabled, showHints, onToggleHints 
         active={showHints}
         label="Sorot elemen asli"
         hint="Tandai semua teks dan garis di halaman yang bisa diambil alih. Tanpa ini, sorotan hanya muncul saat kursor melewatinya."
-        icon={Highlighter}
+        icon={ScanLine}
         disabled={disabled}
         onClick={() => onToggleHints(!showHints)}
       />

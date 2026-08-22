@@ -239,3 +239,75 @@ func TestOverlayWithShapesAndColourIsValidPDF(t *testing.T) {
 		t.Fatalf("page count = %v, %v", count, err)
 	}
 }
+
+func TestTextEmphasisOperators(t *testing.T) {
+	helvetica := &resolvedFont{resource: "F1"}
+	base := TextOverlay{Text: "Contoh", X: 100, Y: 500, FontSize: 20, Opacity: 1}
+
+	plain := textContent(base, helvetica)
+	if !strings.Contains(plain, "0 Tr") {
+		t.Errorf("plain text must use the fill-only render mode:\n%s", plain)
+	}
+	if strings.Contains(plain, " w\n") {
+		t.Errorf("plain text must not set a stroke width:\n%s", plain)
+	}
+
+	bold := textContent(TextOverlay{Text: base.Text, X: base.X, Y: base.Y, FontSize: base.FontSize, Opacity: 1, Bold: true}, helvetica)
+	if !strings.Contains(bold, "2 Tr") {
+		t.Errorf("bold must fill and stroke each glyph:\n%s", bold)
+	}
+	if !strings.Contains(bold, "0.560 w") {
+		t.Errorf("bold stroke should scale with the font size:\n%s", bold)
+	}
+
+	// Italic shears the glyphs, which shows up in the third text-matrix term.
+	italic := textContent(TextOverlay{Text: base.Text, X: base.X, Y: base.Y, FontSize: base.FontSize, Opacity: 1, Italic: true}, helvetica)
+	if !strings.Contains(italic, "1.000000 0.000000 0.212557 1.000000") {
+		t.Errorf("italic did not shear the text matrix:\n%s", italic)
+	}
+	if !strings.Contains(plain, "1.000000 0.000000 -0.000000 1.000000") {
+		t.Errorf("upright text should carry no shear:\n%s", plain)
+	}
+}
+
+func TestTextDecorationsUseMeasuredWidth(t *testing.T) {
+	helvetica := &resolvedFont{resource: "F1"}
+	base := TextOverlay{Text: "AAA", X: 100, Y: 500, FontSize: 10, Opacity: 1}
+	// "AAA" is 3x667/1000 em, so a rule under it ends 20.01pt to the right.
+	underlined := textContent(TextOverlay{Text: base.Text, X: base.X, Y: base.Y, FontSize: base.FontSize, Opacity: 1, Underline: true}, helvetica)
+	if !strings.Contains(underlined, "100.000 498.700 m\n120.010 498.700 l") {
+		t.Errorf("underline did not span the measured text:\n%s", underlined)
+	}
+	struck := textContent(TextOverlay{Text: base.Text, X: base.X, Y: base.Y, FontSize: base.FontSize, Opacity: 1, Strikethrough: true}, helvetica)
+	if !strings.Contains(struck, "100.000 502.600 m\n120.010 502.600 l") {
+		t.Errorf("strikethrough sits at the wrong height:\n%s", struck)
+	}
+	plain := textContent(base, helvetica)
+	if strings.Contains(plain, " l\nS\n") {
+		t.Errorf("undecorated text must draw no rule:\n%s", plain)
+	}
+	// A rotated run needs its rule rotated about the same anchor.
+	rotated := textContent(TextOverlay{Text: base.Text, X: base.X, Y: base.Y, FontSize: base.FontSize, Opacity: 1, Underline: true, Rotation: 30}, helvetica)
+	if !strings.Contains(rotated, " cm\n") {
+		t.Errorf("rotated underline must follow the text:\n%s", rotated)
+	}
+}
+
+func TestArrowHeadPointsAlongTheFinalSegment(t *testing.T) {
+	shape := ShapeOverlay{
+		Kind: ShapeLine, Points: []Point{{X: 100, Y: 100}, {X: 200, Y: 100}},
+		Stroke: RGB{R: 1}, StrokeWidth: 2, Opacity: 1, Arrow: true,
+	}
+	content := shapeContent(shape)
+	if !strings.Contains(content, "200.000 100.000 m") {
+		t.Errorf("arrow head must start at the final point:\n%s", content)
+	}
+	if !strings.Contains(content, "\nh\nf\n") {
+		t.Errorf("arrow head must be a closed filled triangle:\n%s", content)
+	}
+	// Without the flag the shape is only the shaft.
+	shape.Arrow = false
+	if strings.Contains(shapeContent(shape), "\nh\nf\n") {
+		t.Error("a plain line must not grow an arrow head")
+	}
+}

@@ -1,5 +1,5 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
-import { flipY, fontStack } from "./geometry";
+import { arrowHeadPoints, flipY, fontStack } from "./geometry";
 import { type OverlayObject, boundsOf, isBox, isPath } from "./types";
 
 /**
@@ -20,6 +20,9 @@ function ObjectShape({ object, pageHeight, fonts }: { object: OverlayObject; pag
   const transform = rotationTransform(object, pageHeight);
   if (object.kind === "text") {
     const anchor = object.align === "center" ? "middle" : object.align === "right" ? "end" : "start";
+    const decoration = [object.underline && "underline", object.strikethrough && "line-through"]
+      .filter(Boolean)
+      .join(" ");
     return (
       <text
         x={object.x}
@@ -30,7 +33,14 @@ function ObjectShape({ object, pageHeight, fonts }: { object: OverlayObject; pag
         opacity={object.opacity}
         textAnchor={anchor}
         transform={transform}
-        style={{ whiteSpace: "pre" }}
+        style={{
+          whiteSpace: "pre",
+          // The exported PDF synthesises these; the browser has real variants,
+          // so the preview is close rather than identical.
+          fontWeight: object.bold ? 700 : 400,
+          fontStyle: object.italic ? "italic" : "normal",
+          textDecoration: decoration || undefined,
+        }}
       >
         {object.text}
       </text>
@@ -65,16 +75,19 @@ function ObjectShape({ object, pageHeight, fonts }: { object: OverlayObject; pag
   }
   if (isPath(object)) {
     return (
-      <polyline
-        points={object.points.map((point) => `${point.x},${flipY(point.y, pageHeight)}`).join(" ")}
-        fill="none"
-        stroke={object.stroke}
-        strokeWidth={object.strokeWidth}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        opacity={object.opacity}
-        transform={transform}
-      />
+      <g opacity={object.opacity} transform={transform}>
+        <polyline
+          points={object.points.map((point) => `${point.x},${flipY(point.y, pageHeight)}`).join(" ")}
+          fill="none"
+          stroke={object.stroke}
+          strokeWidth={object.strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {object.arrow && object.points.length >= 2 ? (
+          <polygon points={arrowHeadPoints(object, pageHeight)} fill={object.stroke} />
+        ) : null}
+      </g>
     );
   }
   return (
@@ -147,3 +160,4 @@ export function ObjectLayer({
     </svg>
   );
 }
+

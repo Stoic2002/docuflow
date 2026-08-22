@@ -1,4 +1,5 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
+import type { PathObject } from "./types";
 
 /**
  * The single conversion between PDF user space (origin bottom-left) and the
@@ -52,4 +53,22 @@ export function overflowsCover(
   if (!coverWidth) return false;
   const width = measureTextWidth(text, fontSize, family);
   return width !== null && width > coverWidth * OVERFLOW_TOLERANCE;
+}
+
+/**
+ * Mirrors the arrow head the Go engine draws, so the preview and the exported
+ * PDF agree on its size and angle.
+ */
+export function arrowHeadPoints(object: PathObject, pageHeight: number): string {
+  const last = object.points[object.points.length - 1];
+  const previous = object.points[object.points.length - 2];
+  const angle = Math.atan2(last.y - previous.y, last.x - previous.x);
+  const length = Math.max(Math.min(Math.max(object.strokeWidth, 0.1), 72) * 3.4, 4);
+  const spread = 0.42;
+  const corners: [number, number][] = [
+    [last.x, last.y],
+    [last.x - length * Math.cos(angle - spread), last.y - length * Math.sin(angle - spread)],
+    [last.x - length * Math.cos(angle + spread), last.y - length * Math.sin(angle + spread)],
+  ];
+  return corners.map(([x, y]) => `${x},${flipY(y, pageHeight)}`).join(" ");
 }

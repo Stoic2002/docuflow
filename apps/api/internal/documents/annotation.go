@@ -41,15 +41,19 @@ func annotationFailure(format string, args ...any) error {
 }
 
 type AnnotationText struct {
-	Text     string
-	X        float64
-	Y        float64
-	FontSize float64
-	Font     string
-	Color    processing.RGB
-	Opacity  float64
-	Rotation float64
-	Align    string
+	Text          string
+	X             float64
+	Y             float64
+	FontSize      float64
+	Font          string
+	Color         processing.RGB
+	Opacity       float64
+	Rotation      float64
+	Align         string
+	Bold          bool
+	Italic        bool
+	Underline     bool
+	Strikethrough bool
 }
 
 type AnnotationShape struct {
@@ -60,6 +64,7 @@ type AnnotationShape struct {
 	Fill        *processing.RGB
 	Opacity     float64
 	Rotation    float64
+	Arrow       bool
 }
 
 type AnnotationImage struct {
@@ -226,6 +231,8 @@ func appendAnnotationTexts(target *processing.OverlayPage, page AnnotationPage, 
 			Text: text.Text, X: text.X, Y: text.Y, FontSize: text.FontSize,
 			Opacity: text.Opacity, Rotation: text.Rotation, Align: text.Align,
 			Color: text.Color, Font: text.Font,
+			Bold: text.Bold, Italic: text.Italic,
+			Underline: text.Underline, Strikethrough: text.Strikethrough,
 		})
 	}
 	return nil
@@ -251,10 +258,15 @@ func appendAnnotationShapes(target *processing.OverlayPage, page AnnotationPage,
 		if !validOpacity(shape.Opacity) || !validRotation(shape.Rotation) {
 			return annotationFailure("%s has an invalid opacity or rotation", where)
 		}
+		// An arrow head needs a shaft to point along, and a closed outline has
+		// no final segment to speak of.
+		if shape.Arrow && shape.Kind != "line" && shape.Kind != "polyline" {
+			return annotationFailure("%s cannot carry an arrow head", where)
+		}
 		target.Shapes = append(target.Shapes, processing.ShapeOverlay{
 			Kind: processing.ShapeKind(shape.Kind), Points: shape.Points,
 			Stroke: shape.Stroke, StrokeWidth: shape.StrokeWidth, Fill: shape.Fill,
-			Opacity: shape.Opacity, Rotation: shape.Rotation,
+			Opacity: shape.Opacity, Rotation: shape.Rotation, Arrow: shape.Arrow,
 		})
 	}
 	return nil

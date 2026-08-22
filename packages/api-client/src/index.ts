@@ -128,6 +128,11 @@ export type AnnotationText = {
   opacity?: number;
   rotation?: number;
   align?: "left" | "center" | "right";
+  /** Emphasis is synthesised, not swapped for a real bold or italic face. */
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
 };
 
 export type AnnotationShapeKind = "rectangle" | "ellipse" | "line" | "polyline";
@@ -143,6 +148,8 @@ export type AnnotationShape = {
   fill?: string;
   opacity?: number;
   rotation?: number;
+  /** Solid head on the final point. Lines and polylines only. */
+  arrow?: boolean;
 };
 
 export type AnnotationImage = {

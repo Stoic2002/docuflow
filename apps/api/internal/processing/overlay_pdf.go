@@ -47,6 +47,13 @@ type TextOverlay struct {
 	Color    RGB
 	// Font is a FontRegistry id. Empty selects the built-in Helvetica.
 	Font string
+	// Emphasis is synthesised rather than swapped for a real bold or italic
+	// face: the registry may hold only one weight, and a caller that has the
+	// real variant can simply select it as its own Font.
+	Bold          bool
+	Italic        bool
+	Underline     bool
+	Strikethrough bool
 }
 
 type ImageOverlay struct {
@@ -79,6 +86,8 @@ type ShapeOverlay struct {
 	Fill        *RGB
 	Opacity     float64
 	Rotation    float64
+	// Arrow puts a solid head on the final point of a line or polyline.
+	Arrow bool
 }
 
 type OverlayPage struct {
@@ -320,10 +329,33 @@ func shapeContent(shape ShapeOverlay) string {
 			fmt.Fprintf(&content, "%.3f %.3f l\n", point.X, point.Y)
 		}
 		fmt.Fprintf(&content, "%s\n", paintOperator(shape, false))
+		if shape.Arrow {
+			content.WriteString(arrowHead(shape))
+		}
 	}
 	content.WriteString("Q\n")
 	return content.String()
 }
+
+// arrowHead draws a solid triangle on the final segment, sized from the stroke
+// so it stays in proportion however thick the line is.
+func arrowHead(shape ShapeOverlay) string {
+	last := shape.Points[len(shape.Points)-1]
+	previous := shape.Points[len(shape.Points)-2]
+	angle := math.Atan2(last.Y-previous.Y, last.X-previous.X)
+	length := math.Max(clampStrokeWidth(shape.StrokeWidth)*3.4, 4)
+	const spread = 0.42 // radians between the shaft and each barb
+	leftX := last.X - length*math.Cos(angle-spread)
+	leftY := last.Y - length*math.Sin(angle-spread)
+	rightX := last.X - length*math.Cos(angle+spread)
+	rightY := last.Y - length*math.Sin(angle+spread)
+	return fmt.Sprintf("%s\n%.3f %.3f m\n%.3f %.3f l\n%.3f %.3f l\nh\nf\n",
+		colorOperator(shape.Stroke, "rg"), last.X, last.Y, leftX, leftY, rightX, rightY)
+}
+
+// Slant applied to synthesised italics, in the same range digital type foundries
+// use for a real oblique.
+const syntheticItalicSlant = 12.0
 
 func textContent(text TextOverlay, font *resolvedFont) string {
 	fontSize := text.FontSize
@@ -343,9 +375,58 @@ func textContent(text TextOverlay, font *resolvedFont) string {
 	}
 	angle := text.Rotation * math.Pi / 180
 	cosine, sine := math.Cos(angle), math.Sin(angle)
-	return fmt.Sprintf("q /GS%d gs BT /%s %.3f Tf %s %.6f %.6f %.6f %.6f %.3f %.3f Tm %s ET Q\n",
-		opacityKey(text.Opacity), font.resource, fontSize, colorOperator(text.Color, "rg"),
-		cosine, sine, -sine, cosine, x, text.Y, font.show(text.Text))
+	// Italic shears the glyphs inside the rotated frame, so the two transforms
+	// compose into a single text matrix rather than fighting each other.
+	shearX, shearY := -sine, cosine
+	if text.Italic {
+		slant := math.Tan(syntheticItalicSlant * math.Pi / 180)
+		shearX = cosine*slant - sine
+		shearY = sine*slant + cosine
+	}
+
+	var content strings.Builder
+	fmt.Fprintf(&content, "q /GS%d gs\n", opacityKey(text.Opacity))
+	// Render mode 2 fills and then strokes each glyph, which thickens the stems
+	// the way a bold weight would.
+	renderMode := 0
+	if text.Bold {
+		renderMode = 2
+		fmt.Fprintf(&content, "%s\n%.3f w\n", colorOperator(text.Color, "RG"), fontSize*0.028)
+	}
+	fmt.Fprintf(&content, "BT /%s %.3f Tf %s %d Tr %.6f %.6f %.6f %.6f %.3f %.3f Tm %s ET\n",
+		font.resource, fontSize, colorOperator(text.Color, "rg"), renderMode,
+		cosine, sine, shearX, shearY, x, text.Y, font.show(text.Text))
+
+	if text.Underline || text.Strikethrough {
+		content.WriteString(textDecoration(text, font, fontSize, x))
+	}
+	content.WriteString("Q\n")
+	return content.String()
+}
+
+// textDecoration rules the text with the font's own measured width, inside the
+// same rotated frame the glyphs sit in.
+func textDecoration(text TextOverlay, font *resolvedFont, fontSize, x float64) string {
+	width := font.measure(text.Text, fontSize)
+	if width <= 0 {
+		return ""
+	}
+	var content strings.Builder
+	content.WriteString("q\n")
+	if text.Rotation != 0 {
+		fmt.Fprintf(&content, "%s\n", rotationMatrix(text.Rotation, x, text.Y))
+	}
+	fmt.Fprintf(&content, "%s\n%.3f w\n", colorOperator(text.Color, "RG"), fontSize*0.055)
+	if text.Underline {
+		offset := text.Y - fontSize*0.13
+		fmt.Fprintf(&content, "%.3f %.3f m\n%.3f %.3f l\nS\n", x, offset, x+width, offset)
+	}
+	if text.Strikethrough {
+		offset := text.Y + fontSize*0.26
+		fmt.Fprintf(&content, "%.3f %.3f m\n%.3f %.3f l\nS\n", x, offset, x+width, offset)
+	}
+	content.WriteString("Q\n")
+	return content.String()
 }
 
 func imageContent(image ImageOverlay, name string) string {

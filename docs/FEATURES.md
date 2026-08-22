@@ -61,7 +61,7 @@ Yang sudah tersedia tanpa SDK komersial adalah **overlay editing** — menambahk
 
 Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atasnya. Tersedia:
 
-- tool Pilih, Geser halaman, Teks, Kotak, Elips, Garis, Coret bebas, dan Sisipkan JPG;
+- tool Pilih, Geser halaman, Teks, Stabilo, Kotak, Elips, Garis, Panah, Coret bebas, dan Sisipkan JPG, tersusun sebagai rel vertikal melayang di kiri kanvas;
 - **teks dan garis yang sudah ada di halaman langsung bisa diklik** dengan tool Pilih, tanpa berpindah mode. Deteksi berjalan saat halaman dibuka; kursor yang melewati elemen yang bisa diambil alih akan menyorotinya, dan tombol Sorot elemen asli menandai semuanya sekaligus;
 - klik dua kali pada teks untuk mengubahnya **langsung di kanvas**, bukan lewat panel;
 - geser objek dengan tool Pilih;
@@ -71,7 +71,11 @@ Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atas
 - pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi;
 - zoom dengan cubit dua jari di trackpad atau `Ctrl` + scroll, yang memperbesar ke titik kursor; usap dua jari biasa tetap menggulung halaman;
 - editor memakai seluruh viewport: navigasi utama aplikasi disembunyikan dan kanvas mengisi tepi ke tepi, dengan panel properti mengambang di atasnya.
-- warna diisi lewat pemilih warna maupun kode hex, dan ukuran teks dipilih dari daftar ukuran umum.
+- warna diisi lewat pemilih warna maupun kode hex, dan ukuran teks dipilih dari daftar ukuran umum;
+- teks bisa ditebalkan, dimiringkan, digarisbawahi, dan dicoret. Semuanya **disintesis** engine, bukan menukar font: tebal memakai mode render isi-plus-goresan, miring memiringkan matriks teks, sedangkan garis bawah dan coret digambar selebar teks menurut metrik fontnya sehingga tetap benar pada teks rata kanan maupun miring. Kalau file font bold atau italic sungguhan tersedia di `assets/fonts/`, memilihnya dari daftar Font memberi hasil yang lebih baik;
+- **Stabilo** menandai teks atau garis yang sudah ada dengan blok transparan yang mengikuti bentuknya persis;
+- **Panah** menggambar garis bermata panah yang ukurannya mengikuti ketebalan garis;
+- objek bisa diduplikat, dibawa ke depan, atau dikirim ke belakang — yang terakhir berguna untuk memastikan penutup teks berada di bawah teks penggantinya.
 
 Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
 

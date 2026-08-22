@@ -82,3 +82,28 @@ describe("usedAssets", () => {
     expect(usedAssets([text], { ttd: file })).toEqual({});
   });
 });
+
+describe("text emphasis and arrows", () => {
+  it("sends emphasis only when it is switched on", () => {
+    const [page] = toAnnotationDocument([{ ...text, bold: true, underline: true }]).pages;
+    expect(page.texts?.[0]).toMatchObject({ bold: true, underline: true });
+    // Unset flags are omitted rather than sent as false, keeping the payload small.
+    expect(page.texts?.[0]).not.toHaveProperty("italic");
+    expect(page.texts?.[0]).not.toHaveProperty("strikethrough");
+  });
+
+  it("omits emphasis entirely for plain text", () => {
+    const [page] = toAnnotationDocument([text]).pages;
+    expect(page.texts?.[0]).not.toHaveProperty("bold");
+  });
+
+  it("marks an arrow on a line", () => {
+    const [page] = toAnnotationDocument([{ ...straight, arrow: true }]).pages;
+    expect(page.shapes?.[0]).toMatchObject({ kind: "line", arrow: true });
+  });
+
+  it("omits the arrow flag on a plain line", () => {
+    const [page] = toAnnotationDocument([straight]).pages;
+    expect(page.shapes?.[0]).not.toHaveProperty("arrow");
+  });
+});

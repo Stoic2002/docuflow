@@ -32,6 +32,10 @@ type OverlayState = {
   update: (id: string, patch: Partial<OverlayObject>, options?: { history?: boolean }) => void;
   move: (id: string, deltaX: number, deltaY: number) => void;
   remove: (id: string) => void;
+  duplicate: (id: string) => void;
+  /** Render order is array order, so depth is a move within the list. */
+  bringToFront: (id: string) => void;
+  sendToBack: (id: string) => void;
   clearPage: (page: number) => void;
   undo: () => void;
   redo: () => void;
@@ -135,6 +139,49 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
         return { ...object, x: object.x + deltaX, y: object.y + deltaY };
       }),
     })),
+
+  duplicate: (id) =>
+    set((state) => {
+      const source = state.objects.find((object) => object.id === id);
+      if (!source) return state;
+      // Offset the copy so it does not hide exactly behind the original.
+      const shift = 12;
+      const moved = isPath(source)
+        ? { ...source, points: source.points.map((point) => ({ x: point.x + shift, y: point.y - shift })) }
+        : source.kind === "image"
+          ? { ...source, centerX: source.centerX + shift, centerY: source.centerY - shift }
+          : { ...source, x: source.x + shift, y: source.y - shift };
+      const copy = { ...moved, id: crypto.randomUUID() } as OverlayObject;
+      return {
+        past: pushHistory(state.past, state.objects),
+        future: [],
+        objects: [...state.objects, copy],
+        // A duplicated image points at the same file, which stays referenced.
+        selectedId: copy.id,
+      };
+    }),
+
+  bringToFront: (id) =>
+    set((state) => {
+      const target = state.objects.find((object) => object.id === id);
+      if (!target) return state;
+      return {
+        past: pushHistory(state.past, state.objects),
+        future: [],
+        objects: [...state.objects.filter((object) => object.id !== id), target],
+      };
+    }),
+
+  sendToBack: (id) =>
+    set((state) => {
+      const target = state.objects.find((object) => object.id === id);
+      if (!target) return state;
+      return {
+        past: pushHistory(state.past, state.objects),
+        future: [],
+        objects: [target, ...state.objects.filter((object) => object.id !== id)],
+      };
+    }),
 
   remove: (id) =>
     set((state) => {

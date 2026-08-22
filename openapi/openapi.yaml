@@ -649,6 +649,10 @@ components:
         opacity: { type: number, minimum: 0, maximum: 1, default: 1 }
         rotation: { type: number, minimum: -360, maximum: 360 }
         align: { type: string, enum: [left, center, right] }
+        bold: { type: boolean, description: Synthesised weight, not a real bold face }
+        italic: { type: boolean, description: Synthesised slant, not a real italic face }
+        underline: { type: boolean }
+        strikethrough: { type: boolean }
     AnnotationShape:
       type: object
       required: [kind, points]
@@ -661,6 +665,7 @@ components:
         stroke: { type: string, description: "#rgb or #rrggbb; omitted means black" }
         strokeWidth: { type: number, minimum: 0, maximum: 72, default: 1 }
         fill: { type: string, description: Omitted leaves the interior untouched }
+        arrow: { type: boolean, description: Solid head on the final point; line and polyline only }
         opacity: { type: number, minimum: 0, maximum: 1, default: 1 }
         rotation: { type: number, minimum: -360, maximum: 360 }
     AnnotationImage:

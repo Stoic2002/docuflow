@@ -158,3 +158,53 @@ describe("addMany", () => {
     expect(state().past).toHaveLength(0);
   });
 });
+
+describe("duplicate and depth", () => {
+  it("copies an object with a new id, offset so it is not hidden behind the original", () => {
+    state().add(box("a"));
+    state().duplicate("a");
+    const [original, copy] = state().objects as BoxObject[];
+    expect(copy.id).not.toBe(original.id);
+    expect(copy).toMatchObject({ x: original.x + 12, y: original.y - 12, width: original.width });
+    expect(state().selectedId).toBe(copy.id);
+  });
+
+  it("offsets every point of a duplicated path", () => {
+    state().add({
+      id: "p", kind: "draw", page: 1, points: [{ x: 0, y: 0 }, { x: 10, y: 10 }],
+      stroke: "#000000", strokeWidth: 1, opacity: 1, rotation: 0,
+    });
+    state().duplicate("p");
+    expect((state().objects[1] as { points: { x: number; y: number }[] }).points)
+      .toEqual([{ x: 12, y: -12 }, { x: 22, y: -2 }]);
+  });
+
+  it("moves an object to the end of the list to bring it forward", () => {
+    state().add(box("a"));
+    state().add(box("b"));
+    state().bringToFront("a");
+    expect(state().objects.map((object) => object.id)).toEqual(["b", "a"]);
+  });
+
+  it("moves an object to the front of the list to send it behind", () => {
+    state().add(box("a"));
+    state().add(box("b"));
+    state().sendToBack("b");
+    expect(state().objects.map((object) => object.id)).toEqual(["b", "a"]);
+  });
+
+  it("records depth changes in history", () => {
+    state().add(box("a"));
+    state().add(box("b"));
+    state().sendToBack("b");
+    state().undo();
+    expect(state().objects.map((object) => object.id)).toEqual(["a", "b"]);
+  });
+
+  it("ignores a depth change for an object that is gone", () => {
+    state().add(box("a"));
+    const before = state().past.length;
+    state().bringToFront("tidak-ada");
+    expect(state().past.length).toBe(before);
+  });
+});

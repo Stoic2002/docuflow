@@ -13,6 +13,8 @@ export type OverlayTool =
   | "line"
   | "draw"
   | "image"
+  | "highlight"
+  | "arrow"
   | "hand";
 
 export type TextAlign = "left" | "center" | "right";
@@ -36,6 +38,10 @@ export type TextObject = Base & {
   font: string;
   color: string;
   align: TextAlign;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
   /**
    * Width of the patch a cover-and-retype pick placed underneath. Present only
    * for replacement text, and used to warn when the new wording outgrows the
@@ -61,6 +67,8 @@ export type PathObject = Base & {
   points: OverlayPoint[];
   stroke: string;
   strokeWidth: number;
+  /** Solid head on the final point. */
+  arrow?: boolean;
 };
 
 export type ImageObject = Base & {
@@ -79,6 +87,8 @@ export const DEFAULT_TEXT_COLOR = "#111111";
 export const DEFAULT_STROKE_COLOR = "#c62828";
 export const DEFAULT_FONT_SIZE = 16;
 export const DEFAULT_STROKE_WIDTH = 2;
+export const HIGHLIGHT_COLOR = "#ffe14d";
+export const HIGHLIGHT_OPACITY = 0.4;
 
 /** Mirrors the server limits so the UI refuses before the request does. */
 export const MAX_OBJECTS_PER_PAGE = 500;
