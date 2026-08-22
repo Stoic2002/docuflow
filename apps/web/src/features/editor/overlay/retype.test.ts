@@ -160,3 +160,39 @@ describe("inkColorFor", () => {
     expect(inkColorFor(data, width, height, box, "#ffffff")).toBe("#111111");
   });
 });
+
+describe("analyzeBackground with neighbouring ink", () => {
+  const width = 60;
+  const height = 60;
+
+  function image(fill: (x: number, y: number) => [number, number, number]): Uint8ClampedArray {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const [r, g, b] = fill(x, y);
+        const offset = (y * width + x) * 4;
+        data[offset] = r; data[offset + 1] = g; data[offset + 2] = b; data[offset + 3] = 255;
+      }
+    }
+    return data;
+  }
+
+  const box = { x: 20, y: 25, width: 24, height: 10 };
+
+  it("keeps the paper colour when the line above clips into the ring", () => {
+    // A dark line of text sits a few pixels above the run being replaced.
+    const data = image((_x, y) => (y >= 17 && y <= 21 ? [20, 20, 20] : [252, 250, 245]));
+    const sample = analyzeBackground(data, width, height, box);
+    expect(sample.color).toBe("#fcfaf5");
+  });
+
+  it("keeps the paper colour when a rule runs just below", () => {
+    const data = image((_x, y) => (y >= 39 && y <= 41 ? [0, 0, 0] : [255, 255, 255]));
+    expect(analyzeBackground(data, width, height, box).color).toBe("#ffffff");
+  });
+
+  it("still reports a tinted panel rather than the white around it", () => {
+    const data = image((_x, y) => (y >= 10 && y <= 50 ? [41, 89, 158] : [255, 255, 255]));
+    expect(analyzeBackground(data, width, height, box).color).toBe("#29599e");
+  });
+});

@@ -45,16 +45,24 @@ export type BackgroundSample = {
   uniform: boolean;
 };
 
-/** Two colours count as the same background when every channel is this close. */
-const UNIFORM_TOLERANCE = 12;
+/** Channel bits dropped when bucketing samples; 16 levels per channel. */
+const COLOR_BUCKET_SHIFT = 4;
+/** The dominant colour must hold at least this share for the area to count as flat. */
+const UNIFORM_SHARE = 0.72;
 
 function toHex(value: number): string {
   return Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
 }
 
 /**
- * Samples a ring just outside the run and reports the colour behind it. Pixel
+ * Samples rings just outside the run and reports the colour behind it. Pixel
  * coordinates are top-left origin, matching the rendered canvas.
+ *
+ * The result is the most common colour, not the average. Averaging was wrong
+ * in practice: a ring that clips the line above, a rule, or a neighbouring word
+ * picks up dark pixels, and their weight drags the mean away from the paper —
+ * producing a patch that is visibly darker than the page. A modal colour
+ * ignores that minority entirely.
  */
 export function analyzeBackground(
   data: Uint8ClampedArray,
@@ -71,24 +79,38 @@ export function analyzeBackground(
     const offset = (py * imageWidth + px) * 4;
     samples.push([data[offset], data[offset + 1], data[offset + 2]]);
   };
-  const steps = 12;
-  for (let index = 0; index <= steps; index += 1) {
-    const alongX = box.x + (box.width * index) / steps;
-    const alongY = box.y + (box.height * index) / steps;
-    read(alongX, box.y - ring);
-    read(alongX, box.y + box.height + ring);
-    read(box.x - ring, alongY);
-    read(box.x + box.width + ring, alongY);
+  const steps = 16;
+  // Two rings: the inner one hugs the glyphs, the outer one reaches clean paper.
+  for (const distance of [ring, ring * 2]) {
+    for (let index = 0; index <= steps; index += 1) {
+      const alongX = box.x + (box.width * index) / steps;
+      const alongY = box.y + (box.height * index) / steps;
+      read(alongX, box.y - distance);
+      read(alongX, box.y + box.height + distance);
+      read(box.x - distance, alongY);
+      read(box.x + box.width + distance, alongY);
+    }
   }
   if (samples.length === 0) return { color: "#ffffff", uniform: false };
 
+  const buckets = new Map<number, [number, number, number][]>();
+  for (const sample of samples) {
+    const key = sample.reduce((total, value) => (total << 4) | (value >> COLOR_BUCKET_SHIFT), 0);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(sample);
+    else buckets.set(key, [sample]);
+  }
+  let dominant: [number, number, number][] = [];
+  for (const bucket of buckets.values()) {
+    if (bucket.length > dominant.length) dominant = bucket;
+  }
   const mean = [0, 1, 2].map(
-    (channel) => samples.reduce((total, sample) => total + sample[channel], 0) / samples.length,
+    (channel) => dominant.reduce((total, sample) => total + sample[channel], 0) / dominant.length,
   );
-  const uniform = samples.every((sample) =>
-    sample.every((value, channel) => Math.abs(value - mean[channel]) <= UNIFORM_TOLERANCE),
-  );
-  return { color: `#${toHex(mean[0])}${toHex(mean[1])}${toHex(mean[2])}`, uniform };
+  return {
+    color: `#${toHex(mean[0])}${toHex(mean[1])}${toHex(mean[2])}`,
+    uniform: dominant.length / samples.length >= UNIFORM_SHARE,
+  };
 }
 
 function normalizeFamily(value: string): string {

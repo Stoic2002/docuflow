@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@pdf-studio/ui";
+import { IconButton, Tooltip } from "@pdf-studio/ui";
 import {
   Circle, Hand, Highlighter, ImagePlus, Minus, MousePointer2,
   Pencil, Redo2, Square, Trash2, Type, Undo2,
@@ -28,17 +28,9 @@ function ToolButton({ active, label, hint, icon: Icon, disabled, onClick }: {
   return (
     <Tooltip content={<span><b>{label}</b><br />{hint}</span>}>
       <span>
-        <Button
-          type="button"
-          variant={active ? "primary" : "ghost"}
-          className="size-10 justify-center px-0"
-          aria-pressed={active}
-          aria-label={label}
-          disabled={disabled}
-          onClick={onClick}
-        >
+        <IconButton active={active} aria-label={label} disabled={disabled} onClick={onClick}>
           <Icon className="size-[18px]" />
-        </Button>
+        </IconButton>
       </span>
     </Tooltip>
   );

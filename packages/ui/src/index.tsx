@@ -1,7 +1,11 @@
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import { Slot } from "@radix-ui/react-slot";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes,
+  ReactNode, SelectHTMLAttributes,
+} from "react";
+import { useId, useState } from "react";
 
 function cx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -26,6 +30,144 @@ export function Button({ asChild, variant = "primary", className, ...props }: Bu
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * Square icon-only button. Unlike a ghost Button it always carries a border, so
+ * a row of them reads as controls rather than as loose glyphs.
+ */
+export function IconButton({
+  active = false,
+  className,
+  size = "md",
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean; size?: "sm" | "md" }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={props["aria-pressed"] ?? active}
+      className={cx(
+        "inline-flex shrink-0 items-center justify-center rounded-xl border transition duration-150",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
+        "disabled:cursor-not-allowed disabled:border-line disabled:bg-[#f1ede6] disabled:text-[#b3ada3]",
+        size === "sm" ? "size-8" : "size-10",
+        active
+          ? "border-ink bg-ink text-paper shadow-[0_1px_0_rgba(23,23,19,.2)]"
+          : "border-line bg-paper text-ink hover:border-ink hover:bg-accent-soft hover:text-accent",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Label plus control, so every form row lines up the same way. */
+export function Field({
+  label,
+  hint,
+  children,
+  htmlFor,
+}: {
+  label: string;
+  hint?: ReactNode;
+  children: ReactNode;
+  htmlFor?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={htmlFor} className="block text-[11px] font-black uppercase tracking-[0.08em] text-muted">
+        {label}
+      </label>
+      {children}
+      {hint ? <p className="text-xs leading-5 text-muted">{hint}</p> : null}
+    </div>
+  );
+}
+
+export function TextInput({ className, invalid, ...props }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
+  return <input className={cx("form-control text-sm", invalid && "border-accent", className)} {...props} />;
+}
+
+export function SelectInput({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select className={cx("form-control cursor-pointer text-sm", className)} {...props}>
+      {children}
+    </select>
+  );
+}
+
+/** A full six-digit hex, with or without the leading hash. */
+const HEX_PATTERN = /^#?[0-9a-fA-F]{6}$/;
+
+/**
+ * Swatch and hex box driven by one value. While the hex box has focus it holds
+ * whatever is being typed, and the value only changes once the text is a
+ * complete colour, so a half-typed code never blanks what it is editing.
+ */
+export function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const shown = focused ? draft : value.toUpperCase();
+  const invalid = focused && !HEX_PATTERN.test(draft);
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="color"
+        value={value}
+        aria-label={`${label}: pemilih warna`}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          onChange(event.target.value);
+        }}
+        className="size-10 shrink-0 cursor-pointer rounded-xl border border-line bg-paper p-1"
+      />
+      <TextInput
+        value={shown}
+        spellCheck={false}
+        maxLength={7}
+        placeholder="#000000"
+        aria-label={`${label}: kode hex`}
+        invalid={invalid}
+        className="font-mono uppercase"
+        onFocus={() => {
+          setDraft(value);
+          setFocused(true);
+        }}
+        onBlur={() => setFocused(false)}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          if (HEX_PATTERN.test(next)) onChange(next.startsWith("#") ? next : `#${next}`);
+        }}
+      />
+    </div>
+  );
+}
+
+export function RangeInput({
+  label,
+  value,
+  suffix,
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; value: number; suffix?: string }) {
+  const id = useId();
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor={id} className="text-[11px] font-black uppercase tracking-[0.08em] text-muted">{label}</label>
+        <span className="font-mono text-xs text-ink">{Math.round(value * 100) / 100}{suffix ?? ""}</span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        value={value}
+        aria-label={label}
+        className={cx("h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-accent", className)}
+        {...props}
+      />
+    </div>
   );
 }
 

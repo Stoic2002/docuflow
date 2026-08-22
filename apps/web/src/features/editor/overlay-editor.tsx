@@ -1,6 +1,6 @@
 import { api, userFacingError, type DirectToolResult } from "@pdf-studio/api-client";
 import { OverlayEditorEngine } from "@pdf-studio/pdf-engine";
-import { Button, Card, Tooltip } from "@pdf-studio/ui";
+import { Button, Card, IconButton, Tooltip } from "@pdf-studio/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -167,6 +167,27 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
     scrollRef.current?.scrollBy({ left: deltaX, top: deltaY });
   }, []);
 
+  // The canvas itself handles drags that land on the page. This covers the
+  // margin around it, so a drag anywhere in the viewport moves the page.
+  const backdropPan = useRef<{ x: number; y: number } | null>(null);
+  const onBackdropPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.target !== event.currentTarget) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    backdropPan.current = { x: event.clientX, y: event.clientY };
+  };
+  const onBackdropPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const last = backdropPan.current;
+    if (!last) return;
+    panBy(last.x - event.clientX, last.y - event.clientY);
+    backdropPan.current = { x: event.clientX, y: event.clientY };
+  };
+  const onBackdropPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    backdropPan.current = null;
+  };
+
   const exportMutation = useMutation({
     mutationFn: () => api.exportEditSession(sessionId, toAnnotationDocument(objects), usedAssets(objects, assets)),
     onSuccess: async (data) => {
@@ -204,7 +225,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const busy = exportMutation.isPending;
 
   return (
-    <main className="flex h-[calc(100dvh-4.5rem)] w-full flex-col gap-2 px-3 py-3 sm:px-4">
+    <main className="flex h-[calc(100dvh-5rem)] w-full flex-col gap-2 px-3 pb-3 pt-2 sm:px-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="eyebrow">Edit PDF</p>
@@ -212,11 +233,11 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-2xl border border-line bg-paper px-1 py-1">
-            <Button type="button" variant="ghost" className="size-9 justify-center px-0" onClick={() => setZoom(zoom - 0.15)} aria-label="Perkecil"><Minus className="size-4" /></Button>
+            <IconButton size="sm" className="border-transparent bg-transparent" onClick={() => setZoom(zoom - 0.15)} aria-label="Perkecil"><Minus className="size-4" /></IconButton>
             <Tooltip content="Cubit dua jari di trackpad, atau Ctrl + scroll, untuk zoom ke titik kursor">
               <span className="min-w-14 cursor-help text-center text-sm font-semibold">{Math.round(zoom * 100)}%</span>
             </Tooltip>
-            <Button type="button" variant="ghost" className="size-9 justify-center px-0" onClick={() => setZoom(zoom + 0.15)} aria-label="Perbesar"><Plus className="size-4" /></Button>
+            <IconButton size="sm" className="border-transparent bg-transparent" onClick={() => setZoom(zoom + 0.15)} aria-label="Perbesar"><Plus className="size-4" /></IconButton>
           </div>
           {result ? (
             <Button asChild variant="secondary">
@@ -230,9 +251,9 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
           </Button>
           <Tooltip content={panelOpen ? "Sembunyikan panel" : "Tampilkan panel"}>
             <span>
-              <Button type="button" variant="ghost" className="size-10 justify-center px-0" aria-label={panelOpen ? "Sembunyikan panel" : "Tampilkan panel"} onClick={() => setPanelOpen(!panelOpen)}>
+              <IconButton aria-label={panelOpen ? "Sembunyikan panel" : "Tampilkan panel"} onClick={() => setPanelOpen(!panelOpen)}>
                 {panelOpen ? <PanelRightClose className="size-[18px]" /> : <PanelRightOpen className="size-[18px]" />}
-              </Button>
+              </IconButton>
             </span>
           </Tooltip>
         </div>
@@ -253,7 +274,13 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
 
       <div className="relative min-h-0 flex-1">
         <div ref={attachScroll} className="h-full overflow-auto rounded-[1.5rem] border border-ink bg-canvas">
-          <div className="flex min-h-full w-max min-w-full justify-center p-6">
+          <div
+            className="flex min-h-full w-max min-w-full cursor-grab items-center justify-center p-6 active:cursor-grabbing"
+            onPointerDown={onBackdropPointerDown}
+            onPointerMove={onBackdropPointerMove}
+            onPointerUp={onBackdropPointerUp}
+            onPointerCancel={onBackdropPointerUp}
+          >
             {engine && pageSize ? (
               <EditorCanvas
                 engine={engine}
@@ -275,9 +302,9 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
 
         <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-ink bg-paper/95 px-2 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,.12)] backdrop-blur">
-            <Button type="button" variant="ghost" className="size-8 justify-center px-0" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></Button>
+            <IconButton size="sm" className="border-transparent bg-transparent" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></IconButton>
             <span className="text-xs font-bold text-ink">{page} / {pageCount || "…"}</span>
-            <Button type="button" variant="ghost" className="size-8 justify-center px-0" disabled={page >= pageCount} onClick={() => setPage(page + 1)} aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></Button>
+            <IconButton size="sm" className="border-transparent bg-transparent" disabled={page >= pageCount} onClick={() => setPage(page + 1)} aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></IconButton>
           </div>
         </div>
 

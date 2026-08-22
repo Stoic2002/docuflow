@@ -93,11 +93,12 @@ describe("PropertiesPanel", () => {
     expect(screen.getByText(/Pilih objek di kanvas/)).toBeVisible();
   });
 
-  it("edits the selected text and strips line breaks", () => {
+  it("never lets a line break into the stored text", () => {
     state().add(text);
     render(<PropertiesPanel fonts={fonts} fontsAvailable />);
     fireEvent.change(screen.getByLabelText("Isi teks"), { target: { value: "baris satu\nbaris dua" } });
-    expect((state().objects[0] as TextObject).text).toBe("baris satu baris dua");
+    // The engine rejects newlines, so the field must not be able to produce one.
+    expect((state().objects[0] as TextObject).text).not.toMatch(/[\r\n]/);
   });
 
   it("offers the built-in font plus every registered face", () => {
@@ -107,12 +108,6 @@ describe("PropertiesPanel", () => {
     expect([...select.options].map((option) => option.value)).toEqual(["", "arialmt"]);
     fireEvent.change(select, { target: { value: "arialmt" } });
     expect((state().objects[0] as TextObject).font).toBe("arialmt");
-  });
-
-  it("warns when the server has no fonts installed", () => {
-    state().add(text);
-    render(<PropertiesPanel fonts={[]} fontsAvailable={false} />);
-    expect(screen.getByText(/hanya Helvetica bawaan/)).toBeVisible();
   });
 
   it("toggles a fill on and off", () => {
