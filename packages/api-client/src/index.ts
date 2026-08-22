@@ -13,6 +13,7 @@ export type Capabilities = {
     ocrmypdf: ToolCapability;
     pdfinfo: ToolCapability;
     pdftoppm: ToolCapability;
+    pdffonts: ToolCapability;
   };
   features: {
     upload: boolean;
@@ -30,6 +31,9 @@ export type Capabilities = {
     metadata: boolean;
     rename: boolean;
     thumbnails: boolean;
+    embeddedFonts: boolean;
+    fontScan: boolean;
+    annotate: boolean;
   };
   limits: { maxUploadBytes: number };
   viewer: boolean;
@@ -97,6 +101,63 @@ export type DirectToolResult = {
   savedToRecent: boolean;
   outputName?: string;
 };
+
+/**
+ * One overlay editor document. Coordinates are PDF points with the origin at
+ * the bottom-left of the page, so the canvas performs a single flip on submit.
+ */
+export type AnnotationDocument = { pages: AnnotationPage[] };
+
+export type AnnotationPage = {
+  page: number;
+  texts?: AnnotationText[];
+  shapes?: AnnotationShape[];
+  images?: AnnotationImage[];
+};
+
+export type AnnotationText = {
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  /** FontRegistry id from `GET /api/fonts`. Omit for the built-in Helvetica. */
+  font?: string;
+  /** `#rgb` or `#rrggbb`. Omitted means black. */
+  color?: string;
+  /** Omitted means fully opaque. */
+  opacity?: number;
+  rotation?: number;
+  align?: "left" | "center" | "right";
+};
+
+export type AnnotationShapeKind = "rectangle" | "ellipse" | "line" | "polyline";
+
+export type AnnotationShape = {
+  kind: AnnotationShapeKind;
+  /** Rectangle and ellipse take two opposite corners; lines take the path. */
+  points: { x: number; y: number }[];
+  stroke?: string;
+  /** Omitted means 1pt. Zero requires a fill, or the shape is rejected. */
+  strokeWidth?: number;
+  /** Omitted leaves the interior untouched. */
+  fill?: string;
+  opacity?: number;
+  rotation?: number;
+};
+
+export type AnnotationImage = {
+  /** Matches the multipart field name carrying the JPEG. */
+  asset: string;
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+  opacity?: number;
+  rotation?: number;
+};
+
+export type RegisteredFont = { id: string; family: string; serif: boolean; fixed: boolean };
+export type FontIssue = { file: string; reason: string };
 
 export type DirectSplitResult = {
   results: DirectToolResult[];
@@ -214,6 +275,33 @@ export const api = {
       `/api/edit-sessions/${encodeURIComponent(sessionId)}`,
       { signal },
     ),
+  fonts: (signal?: AbortSignal) =>
+    request<{ fonts: RegisteredFont[]; issues: FontIssue[] }>("/api/fonts", { signal }),
+  /**
+   * Flattens the editor document onto the session PDF and saves a new version.
+   * Images referenced by `asset` are sent as file parts under that same name.
+   */
+  exportEditSession: (
+    sessionId: string,
+    annotations: AnnotationDocument,
+    assets: Record<string, File> = {},
+    signal?: AbortSignal,
+  ) => {
+    const path = `/api/edit-sessions/${encodeURIComponent(sessionId)}/export`;
+    const assetNames = Object.keys(assets);
+    if (assetNames.length === 0) {
+      return request<DirectToolResult>(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(annotations),
+        signal,
+      });
+    }
+    const form = new FormData();
+    form.append("document", JSON.stringify(annotations));
+    for (const name of assetNames) form.append(name, assets[name]);
+    return request<DirectToolResult>(path, { method: "POST", body: form, signal });
+  },
   directTool: (
     operation: "merge" | "compress" | "ocr",
     files: File[],

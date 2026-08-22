@@ -29,10 +29,11 @@ type Service struct {
 	repository     *Repository
 	storage        *storage.Store
 	maxUploadBytes int64
+	fonts          *processing.FontRegistry
 }
 
-func NewService(repository *Repository, store *storage.Store, maxUploadBytes int64) *Service {
-	return &Service{repository: repository, storage: store, maxUploadBytes: maxUploadBytes}
+func NewService(repository *Repository, store *storage.Store, maxUploadBytes int64, fonts *processing.FontRegistry) *Service {
+	return &Service{repository: repository, storage: store, maxUploadBytes: maxUploadBytes, fonts: fonts}
 }
 
 func (s *Service) Upload(ctx context.Context, filename, contentType string, source io.Reader) (Document, Version, error) {

@@ -40,7 +40,7 @@ func TestUploadRejectsInvalidMagicAndSizeBeforeDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := NewService(nil, store, 12)
+	service := NewService(nil, store, 12, nil)
 	_, _, err = service.Upload(t.Context(), "fake.pdf", "application/pdf", strings.NewReader("not a PDF"))
 	if !errors.Is(err, ErrInvalidPDF) {
 		t.Fatalf("invalid magic error = %v, want ErrInvalidPDF", err)

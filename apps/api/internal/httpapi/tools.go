@@ -434,7 +434,15 @@ func (s *Server) writeToolResult(w http.ResponseWriter, r *http.Request, documen
 		writeJSON(w, http.StatusCreated, map[string]any{"document": document, "version": version})
 		return
 	}
+	var annotationError *documents.AnnotationError
 	switch {
+	case errors.As(err, &annotationError):
+		// The reason describes the caller's own geometry, so it is safe to echo.
+		writeError(w, http.StatusUnprocessableEntity, "ANNOTATION_INVALID", annotationError.Reason, nil)
+	case errors.Is(err, documents.ErrAnnotationEmpty):
+		writeError(w, http.StatusUnprocessableEntity, "ANNOTATION_EMPTY", "Add at least one object before exporting", nil)
+	case errors.Is(err, processing.ErrFontUnknown):
+		writeError(w, http.StatusUnprocessableEntity, "FONT_UNKNOWN", "The requested font is not installed on the server", nil)
 	case errors.Is(err, documents.ErrInvalidPassword):
 		writeError(w, http.StatusUnprocessableEntity, "INVALID_PASSWORD", "The PDF password is incorrect", nil)
 	case errors.Is(err, documents.ErrPDFNotEncrypted):

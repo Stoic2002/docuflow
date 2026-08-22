@@ -17,7 +17,8 @@ Dokumen ini menjelaskan fitur yang tersedia pada vertical slice lokal Docuflow, 
 | Fitur | Route utama | Status | Dependency |
 | --- | --- | --- | --- |
 | Dashboard | `/` | Tersedia | API, PostgreSQL, storage lokal |
-| Edit PDF | `/edit` | Preview | PDF.js; editing native memerlukan SDK komersial |
+| Edit PDF (viewer) | `/edit` | Preview | PDF.js; editing native memerlukan SDK komersial |
+| Overlay editor (API) | `POST /api/edit-sessions/{id}/export` | Lanjutan | qpdf, pdfinfo; kanvas UI belum ada |
 | Merge PDF | `/merge` | Bergantung capability | qpdf |
 | Split PDF | `/split` | Bergantung capability | qpdf |
 | Compress PDF | `/compress` | Bergantung capability | qpdf |
@@ -49,7 +50,40 @@ Alur `/edit` menerima satu PDF lalu membuka workspace Preview. Fallback berbasis
 - indikasi sampel keberadaan text layer;
 - zoom dan state UI editor yang disimpan secara lokal.
 
-Fallback bukan native PDF editor. Tool untuk mengubah teks, gambar, anotasi, dan ekspor edit tetap dinonaktifkan sampai Apryse atau Nutrient dipilih, SDK berhasil dipasang, dan lisensi dikonfigurasi. Integrasi vendor nantinya tetap harus berada di balik kontrak `PdfEngine`; API vendor tidak disebarkan langsung ke komponen React.
+Fallback bukan native PDF editor. Mengubah teks yang **sudah ada** di dalam PDF tetap memerlukan Apryse atau Nutrient, dan tombolnya tetap dinonaktifkan sampai SDK dipilih, dipasang, dan dilisensikan. Integrasi vendor nantinya tetap harus berada di balik kontrak `PdfEngine`; API vendor tidak disebarkan langsung ke komponen React.
+
+Yang sudah tersedia tanpa SDK komersial adalah **overlay editing** — menambahkan objek baru di atas halaman. Lihat bagian berikutnya.
+
+## Overlay editor
+
+Backend sudah dapat meratakan satu dokumen editor ke atas PDF dan menyimpannya sebagai versi baru lewat `POST /api/edit-sessions/{sessionId}/export`. Kanvas interaktifnya **belum dibangun**, jadi fitur ini belum bisa dipakai dari UI.
+
+Objek yang didukung:
+
+- **Teks** — warna, ukuran, rotasi, opacity, rata kiri/tengah/kanan, dan pilihan font.
+- **Bentuk** — rectangle, ellipse, line, dan polyline untuk freehand, dengan stroke, fill opsional, ketebalan, opacity, dan rotasi.
+- **Gambar** — JPEG, diposisikan lewat titik tengah, ukuran, opacity, dan rotasi.
+
+Koordinat memakai satuan poin PDF dengan titik asal di **kiri-bawah** halaman. Kanvas editor melakukan satu kali pembalikan sumbu saat mengirim, sehingga backend tetap berada di sistem koordinat native PDF.
+
+Batasan yang divalidasi backend: maksimal 500 objek per halaman dan 5000 per dokumen, teks maksimal 2000 karakter dan tidak boleh mengandung baris baru, nomor halaman harus ada di dokumen dan tidak boleh diulang, serta bentuk tanpa stroke maupun fill ditolak karena tidak akan terlihat. Pesan error menyebut objek mana yang bermasalah.
+
+Original tidak pernah ditimpa; hasilnya selalu menjadi versi baru.
+
+## Font
+
+`GET /api/fonts` menampilkan font TrueType yang dapat di-embed. Backend memindai direktori `FONT_DIR` (default `assets/fonts`) saat start.
+
+- Hanya `.ttf` berbasis `glyf`; `.ttc` dan `.otf` CFF ditolak.
+- Bit `fsType` pada tabel OS/2 dibaca, dan font yang vendornya melarang embedding ditolak. Ini membaca niat vendor, bukan pengganti membaca lisensinya.
+- Font di-embed sebagai `CIDFontType2` dengan encoding `Identity-H` dan CMap `ToUnicode`, sehingga teks hasilnya tetap dapat diseleksi dan dicari.
+- Hanya glyph yang dipakai yang ikut di-embed. Halaman uji berisi enam font turun dari 3,2 MB menjadi 194 KB.
+- Direktori kosong bukan error. Editor tetap jalan dengan Helvetica bawaan PDF, yang tidak perlu di-embed tetapi hanya mencakup Latin-1.
+- File yang ditolak dilaporkan pada field `issues`, bukan dibuang diam-diam.
+
+Belum didukung: synthetic bold/italic (sediakan file terpisah), serta shaping untuk aksara yang membutuhkannya seperti Arab, Thai, dan Devanagari. Latin dan Bahasa Indonesia sudah benar.
+
+`DocumentFonts` juga dapat memindai font yang **sudah ada** di dalam PDF yang diupload lewat `pdffonts`, supaya editor bisa menawarkan tipografi dokumen itu sendiri.
 
 ## Merge PDF
 
@@ -212,7 +246,9 @@ Status mesin verifikasi terakhir:
 | `GET` | `/api/documents/trash` | List Trash |
 | `POST` | `/api/documents/{documentId}/restore` | Restore soft-deleted document |
 | `DELETE` | `/api/documents/{documentId}/permanent` | Permanent delete yang terkonfirmasi |
+| `GET` | `/api/fonts` | Font yang dapat di-embed dan file yang ditolak |
 | `POST` | `/api/edit-sessions` | Membuat sesi Preview dari upload langsung |
+| `POST` | `/api/edit-sessions/{sessionId}/export` | Meratakan dokumen overlay editor menjadi versi baru |
 | `POST` | `/api/tools/merge` | Merge PDF |
 | `POST` | `/api/tools/split` | Split menjadi multi-output |
 | `POST` | `/api/tools/extract` | Extract page range |
@@ -248,7 +284,9 @@ Format error API konsisten:
 
 ## Keputusan dan pekerjaan lanjutan
 
-- Memilih Apryse atau Nutrient beserta model lisensinya untuk native editing.
+- Membangun kanvas interaktif untuk overlay editor; kontrak API-nya sudah siap.
+- Menyediakan font berlisensi OFL/Apache di `assets/fonts` untuk deployment.
+- Memilih Apryse atau Nutrient beserta model lisensinya untuk native editing teks yang sudah ada.
 - Mengintegrasikan Poppler untuk PDF → JPG serta memilih engine Office/HTML yang tetap mempertahankan Go sebagai satu-satunya application backend.
 - Menyediakan tool-first UI untuk rotate dan delete pages.
 - Menambah rename metadata dan kebijakan retensi/expiry Trash.

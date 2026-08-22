@@ -386,7 +386,7 @@ func (s *Service) applyOverlay(ctx context.Context, document Document, parent Ve
 	}
 	overlayPath := overlay.Name()
 	defer os.Remove(overlayPath)
-	if err := processing.WriteOverlayPDF(overlay, pages); err != nil {
+	if err := processing.WriteOverlayPDFWithFonts(overlay, pages, s.fonts); err != nil {
 		_ = overlay.Close()
 		return Document{}, Version{}, err
 	}

@@ -103,9 +103,60 @@ paths:
         schema: { type: string, format: uuid }
     post:
       operationId: exportEditSession
-      description: Provider-gated export. The fallback Preview returns PDF_EDITING_UNAVAILABLE and never fabricates an edited PDF.
+      description: >-
+        Flattens an overlay editor document onto the session PDF and stores the
+        result as a new version. The original is never modified. Send JSON when
+        the document has no images, or multipart with the JSON in a "document"
+        field and each JPEG in a part named after the asset it fulfils.
+        Native content editing remains unavailable and is reported separately by
+        capabilities.nativeContentEditing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnnotationDocument" }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  description: The AnnotationDocument encoded as a JSON string.
+                  type: string
+              additionalProperties: { type: string, format: binary }
       responses:
-        "503": { $ref: "#/components/responses/Error" }
+        "201":
+          description: The annotated version was saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DirectToolResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /fonts:
+    get:
+      operationId: listFonts
+      description: >-
+        Lists the embeddable TrueType fonts the server found in FONT_DIR, plus
+        the files it refused and why. An empty list means only the built-in
+        Helvetica is available, which covers Latin-1 only.
+      responses:
+        "200":
+          description: Registered fonts and rejected files
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fonts, issues]
+                properties:
+                  fonts: { type: array, items: { $ref: "#/components/schemas/RegisteredFont" } }
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      required: [file, reason]
+                      properties:
+                        file: { type: string }
+                        reason: { type: string }
+        default: { $ref: "#/components/responses/Error" }
   /documents/trash:
     get:
       operationId: listTrash
@@ -543,6 +594,76 @@ components:
                 items: { $ref: "#/components/schemas/DirectToolResult" }
               savedToRecent: { type: boolean }
   schemas:
+    RegisteredFont:
+      type: object
+      required: [id, family, serif, fixed]
+      properties:
+        id: { type: string, description: Identifier used by AnnotationText.font }
+        family: { type: string, description: PostScript name of the face }
+        serif: { type: boolean }
+        fixed: { type: boolean }
+    AnnotationPoint:
+      type: object
+      required: [x, y]
+      properties:
+        x: { type: number }
+        y: { type: number }
+    AnnotationText:
+      type: object
+      required: [text, x, y, fontSize]
+      properties:
+        text: { type: string, maxLength: 2000, description: One line; submit each line as its own object }
+        x: { type: number }
+        y: { type: number }
+        fontSize: { type: number, minimum: 1, maximum: 400 }
+        font: { type: string, description: RegisteredFont id; omit for the built-in Helvetica }
+        color: { type: string, description: "#rgb or #rrggbb; omitted means black" }
+        opacity: { type: number, minimum: 0, maximum: 1, default: 1 }
+        rotation: { type: number, minimum: -360, maximum: 360 }
+        align: { type: string, enum: [left, center, right] }
+    AnnotationShape:
+      type: object
+      required: [kind, points]
+      properties:
+        kind: { type: string, enum: [rectangle, ellipse, line, polyline] }
+        points:
+          type: array
+          description: Rectangle and ellipse take two opposite corners; line and polyline take the path itself.
+          items: { $ref: "#/components/schemas/AnnotationPoint" }
+        stroke: { type: string, description: "#rgb or #rrggbb; omitted means black" }
+        strokeWidth: { type: number, minimum: 0, maximum: 72, default: 1 }
+        fill: { type: string, description: Omitted leaves the interior untouched }
+        opacity: { type: number, minimum: 0, maximum: 1, default: 1 }
+        rotation: { type: number, minimum: -360, maximum: 360 }
+    AnnotationImage:
+      type: object
+      required: [asset, centerX, centerY, width, height]
+      properties:
+        asset: { type: string, description: Name of the multipart part carrying the JPEG }
+        centerX: { type: number }
+        centerY: { type: number }
+        width: { type: number, exclusiveMinimum: 0 }
+        height: { type: number, exclusiveMinimum: 0 }
+        opacity: { type: number, minimum: 0, maximum: 1, default: 1 }
+        rotation: { type: number, minimum: -360, maximum: 360 }
+    AnnotationPage:
+      type: object
+      required: [page]
+      properties:
+        page: { type: integer, minimum: 1, description: One-based page number; each page may appear once }
+        texts: { type: array, items: { $ref: "#/components/schemas/AnnotationText" } }
+        shapes: { type: array, items: { $ref: "#/components/schemas/AnnotationShape" } }
+        images: { type: array, items: { $ref: "#/components/schemas/AnnotationImage" } }
+    AnnotationDocument:
+      type: object
+      required: [pages]
+      description: >-
+        Coordinates are PDF user-space points with the origin at the bottom-left
+        of the page. At most 500 objects per page and 5000 in total.
+      properties:
+        pages:
+          type: array
+          items: { $ref: "#/components/schemas/AnnotationPage" }
     DirectToolResult:
       type: object
       required: [document, version, downloadUrl, beforeBytes, afterBytes, savedToRecent]

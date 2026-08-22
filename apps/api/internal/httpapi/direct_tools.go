@@ -54,16 +54,6 @@ func (s *Server) getEditSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"session": editSessionResponse(document), "document": document})
 }
 
-func (s *Server) exportEditSession(w http.ResponseWriter, r *http.Request) {
-	if _, err := uuid.Parse(chi.URLParam(r, "sessionId")); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_SESSION_ID", "Edit session ID is invalid", nil)
-		return
-	}
-	writeError(w, http.StatusServiceUnavailable, "PDF_EDITING_UNAVAILABLE", "Native PDF editing is unavailable; preview mode cannot export edits", map[string]any{
-		"mode": "preview", "originalSafe": true,
-	})
-}
-
 func editSessionResponse(document documents.Document) map[string]any {
 	id := document.ID.String()
 	return map[string]any{

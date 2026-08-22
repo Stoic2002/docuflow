@@ -24,8 +24,8 @@ type Server struct {
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, store *storage.Store, detector *processing.Detector) http.Handler {
-	documentService := documents.NewService(documents.NewRepository(pool), store, cfg.MaxUploadBytes)
 	fonts := processing.LoadFontRegistry(cfg.FontDir)
+	documentService := documents.NewService(documents.NewRepository(pool), store, cfg.MaxUploadBytes, fonts)
 	server := &Server{config: cfg, pool: pool, storage: store, detector: detector, documents: documentService, fonts: fonts}
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -138,6 +138,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 			"watermark":      overlayAvailable,
 			"pageNumbers":    overlayAvailable,
 			"headerFooter":   overlayAvailable,
+			"annotate":       overlayAvailable,
 			"metadata":       qpdfAvailable,
 			"rename":         baseAvailable,
 			"thumbnails":     tools.PDFToPPM.Available && baseAvailable,
@@ -146,7 +147,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		},
 		"viewer":                    baseAvailable,
 		"nativeContentEditing":      false,
-		"overlayEditing":            false,
+		"overlayEditing":            overlayAvailable,
 		"merge":                     qpdfAvailable,
 		"split":                     qpdfAvailable,
 		"compressLossless":          qpdfAvailable,
