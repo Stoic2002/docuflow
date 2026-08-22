@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { flipY, fontStack } from "./geometry";
+import { flipY, fontStack, overflowsCover } from "./geometry";
 
 describe("flipY", () => {
   it("converts between the PDF and screen origins", () => {
@@ -30,5 +30,17 @@ describe("fontStack", () => {
   it("falls back to Helvetica for the built-in font", () => {
     expect(fontStack("", fonts)).toBe("Helvetica, Arial, sans-serif");
     expect(fontStack("belum-terpasang", fonts)).toBe("Helvetica, Arial, sans-serif");
+  });
+});
+
+describe("overflowsCover", () => {
+  it("stays quiet for text that was never a retype replacement", () => {
+    expect(overflowsCover("apa pun", 12, "sans-serif", undefined)).toBe(false);
+  });
+
+  it("stays quiet when the browser cannot measure text", () => {
+    // jsdom has no canvas backend, so measurement returns null and the panel
+    // must not raise a false alarm.
+    expect(overflowsCover("teks yang jauh lebih panjang dari aslinya", 12, "sans-serif", 10)).toBe(false);
   });
 });

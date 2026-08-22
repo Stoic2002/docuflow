@@ -217,12 +217,6 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {!capabilities.data.nativeContentEditing ? (
-        <CapabilityNotice
-          title="Yang bisa dan belum bisa dilakukan di sini"
-          reason="Anda dapat menambah objek baru, dan mengganti teks yang sudah ada lewat tool Ganti teks asli. Yang belum bisa adalah mengubah teks sambil mengalirkan ulang paragrafnya: teks pengganti yang lebih panjang akan melewati batas teks lama. Reflow memerlukan SDK komersial yang belum dikonfigurasi. Apa pun yang Anda lakukan, original tetap utuh dan hasilnya disimpan sebagai versi baru."
-        />
-      ) : null}
       {!canAnnotate ? <div className="mt-3"><CapabilityNotice reason={capabilities.data.tools.qpdf.reason ?? "qpdf atau pdfinfo belum tersedia di PATH backend."} /></div> : null}
       {textLayer === "absent" ? (
         <Card className="mt-3 border-accent/40 bg-accent-soft p-4 text-sm text-ink">
@@ -243,7 +237,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
           {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
           {tool === "retype" ? (
             <p className="text-xs leading-5 text-muted">
-              Klik teks yang disorot untuk menggantinya. Docuflow menutup teks lama dengan warna latar di sekitarnya lalu menulis teks baru di atasnya — rapi pada latar polos, terlihat pada latar bergambar atau bergradasi. Teks asli tetap ada di dalam file, tertutup, jadi cara ini <b>bukan</b> redaksi yang aman.
+              Klik teks yang disorot untuk menggantinya. Docuflow menutup teks lama dengan warna latar di sekitarnya lalu menulis teks baru di atasnya — rapi pada latar polos, terlihat pada latar bergambar atau bergradasi. Teks pengganti tidak mengalir ulang, jadi teks yang lebih panjang akan melewati batas teks lama. Teks asli juga tetap ada di dalam file, tertutup, sehingga cara ini <b>bukan</b> redaksi yang aman.
             </p>
           ) : null}
           {notice ? <p className="text-xs font-bold text-accent" role="status">{notice}</p> : null}

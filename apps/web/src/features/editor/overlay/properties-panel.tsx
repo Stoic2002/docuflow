@@ -1,5 +1,6 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
 import { Card } from "@pdf-studio/ui";
+import { fontStack, overflowsCover } from "./geometry";
 import { useOverlayStore } from "./store";
 import { MAX_TEXT_LENGTH, type OverlayObject, isBox, isPath } from "./types";
 
@@ -90,6 +91,12 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
           <p className="-mt-2 text-xs text-muted">
             Satu objek berisi satu baris. Untuk baris kedua, tambahkan objek teks baru.
           </p>
+          {overflowsCover(selected.text, selected.fontSize, fontStack(selected.font, fonts), selected.coverWidth) ? (
+            <p className="-mt-2 text-xs font-bold text-accent" role="alert">
+              Teks ini lebih panjang daripada teks asli yang ditutupinya, dan tidak akan mengalir ke baris berikutnya.
+              Perpendek kalimatnya, kecilkan ukurannya, atau terima bahwa ia melewati batas.
+            </p>
+          ) : null}
           <Field label="Font">
             <select
               className="form-control"

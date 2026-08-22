@@ -36,6 +36,12 @@ export type TextObject = Base & {
   font: string;
   color: string;
   align: TextAlign;
+  /**
+   * Width of the patch a cover-and-retype pick placed underneath. Present only
+   * for replacement text, and used to warn when the new wording outgrows the
+   * old, since nothing reflows it.
+   */
+  coverWidth?: number;
 };
 
 /** `x`/`y` is the bottom-left corner of the bounding box. */

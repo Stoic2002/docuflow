@@ -127,3 +127,18 @@ describe("PropertiesPanel sizing", () => {
     expect(screen.getByLabelText("Tebal garis")).toBeVisible();
   });
 });
+
+describe("PropertiesPanel retype guidance", () => {
+  it("does not warn about overflow for ordinary text objects", () => {
+    state().add(text);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    expect(screen.queryByText(/lebih panjang daripada teks asli/)).toBeNull();
+  });
+
+  it("keeps the cover width out of the wire format", async () => {
+    const { toAnnotationDocument } = await import("./serialize");
+    state().add({ ...text, coverWidth: 120 });
+    const [page] = toAnnotationDocument(state().objects).pages;
+    expect(page.texts?.[0]).not.toHaveProperty("coverWidth");
+  });
+});

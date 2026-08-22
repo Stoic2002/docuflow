@@ -19,3 +19,37 @@ export function fontStack(fontId: string, fonts: RegisteredFont[]): string {
   const generic = font.fixed ? "monospace" : font.serif ? "serif" : "sans-serif";
   return `"${font.family}", ${generic}`;
 }
+
+/**
+ * Measures a string the way the browser would draw it. The browser may not have
+ * the server's font installed, so this is close rather than exact — good enough
+ * to warn that replacement text has outgrown the words it covers, and never
+ * used to position anything.
+ */
+let measuringContext: CanvasRenderingContext2D | null | undefined;
+
+export function measureTextWidth(text: string, fontSize: number, family: string): number | null {
+  if (measuringContext === undefined) {
+    measuringContext = typeof document === "undefined"
+      ? null
+      : document.createElement("canvas").getContext("2d");
+  }
+  if (!measuringContext) return null;
+  measuringContext.font = `${fontSize}px ${family}`;
+  const width = measuringContext.measureText(text).width;
+  return Number.isFinite(width) && width > 0 ? width : null;
+}
+
+/** Replacement text is flagged once it is this much wider than its patch. */
+const OVERFLOW_TOLERANCE = 1.02;
+
+export function overflowsCover(
+  text: string,
+  fontSize: number,
+  family: string,
+  coverWidth: number | undefined,
+): boolean {
+  if (!coverWidth) return false;
+  const width = measureTextWidth(text, fontSize, family);
+  return width !== null && width > coverWidth * OVERFLOW_TOLERANCE;
+}

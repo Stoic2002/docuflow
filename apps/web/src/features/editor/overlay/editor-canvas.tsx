@@ -148,6 +148,7 @@ export function EditorCanvas({
         x: run.x, y: run.y, fontSize: run.fontSize,
         font: matchFont(run.fontFamily, fonts), color: ink,
         align: "left", opacity: 1, rotation: run.rotation,
+        coverWidth: box.width,
       },
     ]);
     if (added) {
