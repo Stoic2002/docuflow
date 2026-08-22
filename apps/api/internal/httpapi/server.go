@@ -20,11 +20,13 @@ type Server struct {
 	storage   *storage.Store
 	detector  *processing.Detector
 	documents *documents.Service
+	fonts     *processing.FontRegistry
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, store *storage.Store, detector *processing.Detector) http.Handler {
 	documentService := documents.NewService(documents.NewRepository(pool), store, cfg.MaxUploadBytes)
-	server := &Server{config: cfg, pool: pool, storage: store, detector: detector, documents: documentService}
+	fonts := processing.LoadFontRegistry(cfg.FontDir)
+	server := &Server{config: cfg, pool: pool, storage: store, detector: detector, documents: documentService, fonts: fonts}
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(server.requestLogger)
@@ -34,6 +36,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, store *storage.Store, detector *
 	router.Use(server.timeout)
 	router.Get("/api/health", server.health)
 	router.Get("/api/capabilities", server.capabilities)
+	router.Get("/api/fonts", server.listFonts)
 	router.Route("/api/edit-sessions", func(router chi.Router) {
 		router.Post("/", server.createEditSession)
 		router.Get("/{sessionId}", server.getEditSession)
@@ -109,6 +112,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 	tools := s.detector.Detect()
+	availableFonts := s.fonts.Available()
 	databaseUp := s.databaseAvailable(r.Context())
 	storageUp := s.storage.Writable()
 	baseAvailable := databaseUp && storageUp
@@ -119,7 +123,8 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		"storage":  map[string]bool{"available": storageUp},
 		"database": map[string]bool{"available": databaseUp},
 		"tools": map[string]any{
-			"qpdf": tools.QPDF, "ocrmypdf": tools.OCRmyPDF, "pdfinfo": tools.PDFInfo, "pdftoppm": tools.PDFToPPM,
+			"qpdf": tools.QPDF, "ocrmypdf": tools.OCRmyPDF, "pdfinfo": tools.PDFInfo,
+			"pdftoppm": tools.PDFToPPM, "pdffonts": tools.PDFFonts,
 		},
 		"features": map[string]bool{
 			"upload": baseAvailable, "view": baseAvailable,
@@ -136,6 +141,8 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 			"metadata":       qpdfAvailable,
 			"rename":         baseAvailable,
 			"thumbnails":     tools.PDFToPPM.Available && baseAvailable,
+			"embeddedFonts":  len(availableFonts) > 0,
+			"fontScan":       tools.PDFFonts.Available,
 		},
 		"viewer":                    baseAvailable,
 		"nativeContentEditing":      false,
@@ -150,4 +157,18 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		"convertImageToPdf":         baseAvailable,
 		"limits":                    map[string]int64{"maxUploadBytes": s.config.MaxUploadBytes},
 	})
+}
+
+// listFonts exposes the embeddable fonts an editor may offer, plus the files
+// the registry refused so the reason is visible instead of silent.
+func (s *Server) listFonts(w http.ResponseWriter, r *http.Request) {
+	fonts := s.fonts.Available()
+	if fonts == nil {
+		fonts = []processing.RegisteredFont{}
+	}
+	issues := s.fonts.Issues()
+	if issues == nil {
+		issues = []processing.FontIssue{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fonts": fonts, "issues": issues})
 }

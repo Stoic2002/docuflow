@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -131,14 +132,27 @@ func TestShapeContentUsesExpectedOperators(t *testing.T) {
 }
 
 func TestTextContentCarriesColour(t *testing.T) {
-	green := textContent(TextOverlay{Text: "Hijau", X: 10, Y: 10, FontSize: 12, Opacity: 1, Color: RGB{G: 0.5}})
+	helvetica := &resolvedFont{resource: "F1"}
+	green := textContent(TextOverlay{Text: "Hijau", X: 10, Y: 10, FontSize: 12, Opacity: 1, Color: RGB{G: 0.5}}, helvetica)
 	if !strings.Contains(green, "0.0000 0.5000 0.0000 rg") {
 		t.Fatalf("textContent() lost the requested colour:\n%s", green)
 	}
 	// An unset colour must stay black so existing tools render unchanged.
-	blackDefault := textContent(TextOverlay{Text: "Hitam", X: 10, Y: 10, FontSize: 12, Opacity: 1})
+	blackDefault := textContent(TextOverlay{Text: "Hitam", X: 10, Y: 10, FontSize: 12, Opacity: 1}, helvetica)
 	if !strings.Contains(blackDefault, "0.0000 0.0000 0.0000 rg") {
 		t.Fatalf("textContent() default colour is not black:\n%s", blackDefault)
+	}
+}
+
+func TestHelveticaAlignmentUsesRealMetrics(t *testing.T) {
+	helvetica := &resolvedFont{resource: "F1"}
+	// "AAA" is 3x667/1000 em wide, so a centred run starts half that to the left.
+	centered := textContent(TextOverlay{Text: "AAA", X: 300, Y: 10, FontSize: 10, Opacity: 1, Align: "center"}, helvetica)
+	if !strings.Contains(centered, "289.995 10.000 Tm") {
+		t.Fatalf("centred text did not use Helvetica metrics:\n%s", centered)
+	}
+	if width := helvetica.measure("AAA", 10); math.Abs(width-20.01) > 0.001 {
+		t.Fatalf("measure(\"AAA\", 10) = %f, want 20.01", width)
 	}
 }
 

@@ -15,6 +15,7 @@ type Config struct {
 	DatabaseURL       string
 	FrontendOrigin    string
 	StorageRoot       string
+	FontDir           string
 	MaxUploadBytes    int64
 	RequestTimeout    time.Duration
 	ProcessingTimeout time.Duration
@@ -41,11 +42,18 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve STORAGE_ROOT: %w", err)
 	}
+	// Fonts are an optional deployment input. A missing directory simply means
+	// the editor offers the built-in Helvetica only.
+	absFonts, err := filepath.Abs(envOr("FONT_DIR", "../../assets/fonts"))
+	if err != nil {
+		return Config{}, fmt.Errorf("resolve FONT_DIR: %w", err)
+	}
 	return Config{
 		APIAddr:           envOr("API_ADDR", "127.0.0.1:8080"),
 		DatabaseURL:       envOr("DATABASE_URL", "postgres://localhost:5432/pdf_web_studio?sslmode=disable"),
 		FrontendOrigin:    envOr("FRONTEND_ORIGIN", "http://localhost:5173"),
 		StorageRoot:       absStorage,
+		FontDir:           absFonts,
 		MaxUploadBytes:    maxUpload,
 		RequestTimeout:    requestTimeout,
 		ProcessingTimeout: processingTimeout,

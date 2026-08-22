@@ -45,6 +45,8 @@ type TextOverlay struct {
 	Rotation float64
 	Align    string
 	Color    RGB
+	// Font is a FontRegistry id. Empty selects the built-in Helvetica.
+	Font string
 }
 
 type ImageOverlay struct {
@@ -323,7 +325,7 @@ func shapeContent(shape ShapeOverlay) string {
 	return content.String()
 }
 
-func textContent(text TextOverlay) string {
+func textContent(text TextOverlay, font *resolvedFont) string {
 	fontSize := text.FontSize
 	if fontSize < 6 {
 		fontSize = 6
@@ -332,18 +334,18 @@ func textContent(text TextOverlay) string {
 		fontSize = 144
 	}
 	x := text.X
-	estimatedWidth := float64(utf8.RuneCountInString(text.Text)) * fontSize * 0.52
+	width := font.measure(text.Text, fontSize)
 	if text.Align == "center" {
-		x -= estimatedWidth / 2
+		x -= width / 2
 	}
 	if text.Align == "right" {
-		x -= estimatedWidth
+		x -= width
 	}
 	angle := text.Rotation * math.Pi / 180
 	cosine, sine := math.Cos(angle), math.Sin(angle)
-	return fmt.Sprintf("q /GS%d gs BT /F1 %.3f Tf %s %.6f %.6f %.6f %.6f %.3f %.3f Tm (%s) Tj ET Q\n",
-		opacityKey(text.Opacity), fontSize, colorOperator(text.Color, "rg"),
-		cosine, sine, -sine, cosine, x, text.Y, escapePDFText(text.Text))
+	return fmt.Sprintf("q /GS%d gs BT /%s %.3f Tf %s %.6f %.6f %.6f %.6f %.3f %.3f Tm %s ET Q\n",
+		opacityKey(text.Opacity), font.resource, fontSize, colorOperator(text.Color, "rg"),
+		cosine, sine, -sine, cosine, x, text.Y, font.show(text.Text))
 }
 
 func imageContent(image ImageOverlay, name string) string {
@@ -359,7 +361,7 @@ func imageContent(image ImageOverlay, name string) string {
 
 // overlayContent paints shapes first, then images, then text, so annotations
 // read in the order an editor stacks them.
-func overlayContent(page OverlayPage, imageNames map[string]string) string {
+func overlayContent(page OverlayPage, imageNames map[string]string, fonts map[string]*resolvedFont) string {
 	var content strings.Builder
 	for _, shape := range page.Shapes {
 		content.WriteString(shapeContent(shape))
@@ -368,7 +370,7 @@ func overlayContent(page OverlayPage, imageNames map[string]string) string {
 		content.WriteString(imageContent(image, imageNames[image.Image.Path]))
 	}
 	for _, text := range page.Texts {
-		content.WriteString(textContent(text))
+		content.WriteString(textContent(text, fonts[text.Font]))
 	}
 	return content.String()
 }
@@ -395,7 +397,13 @@ func collectImages(pages []OverlayPage) *imageRegistry {
 	return registry
 }
 
+// WriteOverlayPDF draws with the built-in Helvetica only. Callers that need
+// embedded fonts pass a registry to WriteOverlayPDFWithFonts.
 func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
+	return WriteOverlayPDFWithFonts(output, pages, nil)
+}
+
+func WriteOverlayPDFWithFonts(output *os.File, pages []OverlayPage, registry *FontRegistry) error {
 	if len(pages) == 0 {
 		return errors.New("overlay requires at least one page")
 	}
@@ -424,6 +432,10 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 			opacities[opacityKey(item.Opacity)] = 0
 		}
 	}
+	fonts, embeddedFonts, err := resolveFonts(pages, registry)
+	if err != nil {
+		return err
+	}
 	images := collectImages(pages)
 	nextID := 4 + len(pages)*2
 	for opacity := range opacities {
@@ -433,6 +445,11 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 	for _, image := range images.order {
 		images.object[image.Path] = nextID
 		nextID++
+	}
+	fontIDs := make([]fontObjects, len(embeddedFonts))
+	for index := range embeddedFonts {
+		fontIDs[index] = fontObjects{typeZero: nextID, cidFont: nextID + 1, descriptor: nextID + 2, fontFile: nextID + 3, toUnicode: nextID + 4}
+		nextID += objectsPerEmbeddedFont
 	}
 	writer := &pdfWriter{file: output, offsets: make([]int64, nextID)}
 	writer.write("%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
@@ -455,7 +472,7 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 		}
 		pageID, contentID := 4+index*2, 5+index*2
 		var resources strings.Builder
-		resources.WriteString("<< /Font << /F1 3 0 R >> /ExtGState <<")
+		fmt.Fprintf(&resources, "<< /Font << /F1 3 0 R%s >> /ExtGState <<", pageFontObjects(page, fonts, embeddedFonts, fontIDs))
 		for opacity, id := range opacities {
 			fmt.Fprintf(&resources, " /GS%d %d 0 R", opacity, id)
 		}
@@ -464,7 +481,7 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 			fmt.Fprintf(&resources, " /XObject <<%s >>", pageObjects)
 		}
 		resources.WriteString(" >>")
-		content := overlayContent(page, images.names)
+		content := overlayContent(page, images.names, fonts)
 		writer.startObject(pageID)
 		writer.write(fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.3f %.3f] /Resources %s /Contents %d 0 R >>", page.Width, page.Height, resources.String(), contentID))
 		writer.endObject()
@@ -491,6 +508,11 @@ func WriteOverlayPDF(output *os.File, pages []OverlayPage) error {
 		writer.copyFile(image.Path)
 		writer.write("\nendstream")
 		writer.endObject()
+	}
+	for index, entry := range embeddedFonts {
+		if err := writeEmbeddedFont(writer, entry, fontIDs[index]); err != nil {
+			return err
+		}
 	}
 	if writer.err != nil {
 		return writer.err
@@ -521,6 +543,24 @@ func pageImageObjects(page OverlayPage, images *imageRegistry) string {
 		}
 		listed[path] = true
 		fmt.Fprintf(&resources, " /%s %d 0 R", images.names[path], images.object[path])
+	}
+	return resources.String()
+}
+
+// pageFontObjects lists the embedded fonts a page actually draws with, so a
+// page that only uses Helvetica does not advertise every registered font.
+func pageFontObjects(page OverlayPage, fonts map[string]*resolvedFont, embedded []*resolvedFont, ids []fontObjects) string {
+	used := map[string]bool{}
+	for _, text := range page.Texts {
+		if resolved := fonts[text.Font]; resolved != nil && resolved.ttf != nil {
+			used[resolved.resource] = true
+		}
+	}
+	var resources strings.Builder
+	for index, entry := range embedded {
+		if used[entry.resource] {
+			fmt.Fprintf(&resources, " /%s %d 0 R", entry.resource, ids[index].typeZero)
+		}
 	}
 	return resources.String()
 }

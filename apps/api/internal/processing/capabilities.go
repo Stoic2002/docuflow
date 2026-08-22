@@ -21,6 +21,7 @@ type Capabilities struct {
 	OCRmyPDF ToolCapability
 	PDFInfo  ToolCapability
 	PDFToPPM ToolCapability
+	PDFFonts ToolCapability
 }
 
 type Detector struct {
@@ -35,6 +36,7 @@ func (d *Detector) Detect() Capabilities {
 			OCRmyPDF: detectTool("ocrmypdf", "--version"),
 			PDFInfo:  detectTool("pdfinfo", "-v"),
 			PDFToPPM: detectTool("pdftoppm", "-v"),
+			PDFFonts: detectTool("pdffonts", "-v"),
 		}
 		if d.value.OCRmyPDF.Available {
 			d.value.OCRmyPDF.Languages = detectOCRLanguages()
