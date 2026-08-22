@@ -1,5 +1,6 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
 import { Card } from "@pdf-studio/ui";
+import { useState } from "react";
 import { fontStack, overflowsCover } from "./geometry";
 import { useOverlayStore } from "./store";
 import { MAX_TEXT_LENGTH, type OverlayObject, isBox, isPath } from "./types";
@@ -13,19 +14,73 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/** Accepts a full six-digit hex, with or without the hash. */
+const HEX_PATTERN = /^#?[0-9a-fA-F]{6}$/;
+
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  // The text field holds whatever is being typed; the object only changes once
+  // the value is a complete colour, so a half-typed hex never blanks the object.
+  const [draft, setDraft] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const shown = focused ? draft : value;
   return (
     <Field label={label}>
       <span className="flex items-center gap-2">
         <input
           type="color"
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-9 w-12 cursor-pointer rounded-lg border border-line bg-paper p-1"
-          aria-label={label}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            onChange(event.target.value);
+          }}
+          className="size-9 shrink-0 cursor-pointer rounded-lg border border-line bg-paper p-1"
+          aria-label={`${label}: pemilih warna`}
         />
-        <code className="text-xs text-muted">{value}</code>
+        <input
+          type="text"
+          value={shown}
+          spellCheck={false}
+          maxLength={7}
+          aria-label={`${label}: kode hex`}
+          placeholder="#000000"
+          className={`form-control font-mono text-sm uppercase ${focused && !HEX_PATTERN.test(draft) ? "border-accent" : ""}`}
+          onFocus={() => {
+            setDraft(value);
+            setFocused(true);
+          }}
+          onBlur={() => setFocused(false)}
+          onChange={(event) => {
+            const next = event.target.value;
+            setDraft(next);
+            if (HEX_PATTERN.test(next)) onChange(next.startsWith("#") ? next : `#${next}`);
+          }}
+        />
       </span>
+    </Field>
+  );
+}
+
+/** The sizes a document actually uses, so the common case is one click. */
+const FONT_SIZES = [6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 60, 72, 96, 120, 144];
+
+function FontSizeField({ value, onChange }: { value: number; onChange: (value: number) => void }) {
+  // A retyped run keeps the original size, which is rarely a round number, so
+  // that exact value is offered alongside the standard list.
+  const options = FONT_SIZES.includes(Math.round(value * 10) / 10)
+    ? FONT_SIZES
+    : [...FONT_SIZES, Math.round(value * 10) / 10].sort((left, right) => left - right);
+  return (
+    <Field label="Ukuran teks">
+      <select
+        className="form-control"
+        aria-label="Ukuran teks"
+        value={String(Math.round(value * 10) / 10)}
+        onChange={(event) => onChange(Number(event.target.value))}
+      >
+        {options.map((size) => (
+          <option key={size} value={String(size)}>{size} pt</option>
+        ))}
+      </select>
     </Field>
   );
 }
@@ -111,8 +166,9 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
             </select>
           </Field>
           {!fontsAvailable ? (
-            <p className="-mt-2 text-xs text-muted">
-              Belum ada font terpasang di server, jadi hanya Helvetica bawaan yang tersedia. Karakter di luar Latin-1 akan ditolak.
+            <p className="-mt-2 text-xs leading-5 text-muted">
+              Daftar font kosong karena direktori <code className="font-mono">assets/fonts/</code> di server belum berisi file <code className="font-mono">.ttf</code>.
+              Tambahkan font berlisensi OFL atau Apache di sana lalu jalankan ulang API. Sementara itu hanya Helvetica bawaan yang tersedia, dan karakter di luar Latin-1 akan ditolak.
             </p>
           ) : null}
           <Field label="Perataan">
@@ -127,7 +183,7 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
               <option value="right">Kanan</option>
             </select>
           </Field>
-          <Slider label="Ukuran" value={selected.fontSize} min={6} max={144} step={1} suffix="pt" onChange={(fontSize) => patch({ fontSize })} />
+          <FontSizeField value={selected.fontSize} onChange={(fontSize) => patch({ fontSize })} />
           <ColorField label="Warna" value={selected.color} onChange={(color) => patch({ color })} />
         </>
       ) : null}

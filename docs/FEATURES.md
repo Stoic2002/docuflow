@@ -61,19 +61,22 @@ Yang sudah tersedia tanpa SDK komersial adalah **overlay editing** — menambahk
 
 Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atasnya. Tersedia:
 
-- tool Pilih, Teks, Kotak, Elips, Garis, Gambar bebas, Sisipkan JPG, Ganti teks asli, dan Garis & tabel;
+- tool Pilih, Geser halaman, Teks, Kotak, Elips, Garis, Coret bebas, dan Sisipkan JPG;
+- **teks dan garis yang sudah ada di halaman langsung bisa diklik** dengan tool Pilih, tanpa berpindah mode. Deteksi berjalan saat halaman dibuka; kursor yang melewati elemen yang bisa diambil alih akan menyorotinya, dan tombol Sorot elemen asli menandai semuanya sekaligus;
+- klik dua kali pada teks untuk mengubahnya **langsung di kanvas**, bukan lewat panel;
 - geser objek dengan tool Pilih;
+- geser halaman dengan menahan `Spasi` lalu menarik, dengan tool Geser halaman, atau dengan menarik area kosong saat tool Pilih aktif;
 - panel Properti untuk warna, isi, ketebalan garis, ukuran teks, font, perataan, opacity, dan rotasi;
 - undo/redo, hapus objek terpilih, navigasi halaman, dan zoom;
 - pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi;
 - zoom dengan cubit dua jari di trackpad atau `Ctrl` + scroll, yang memperbesar ke titik kursor; usap dua jari biasa tetap menggulung halaman.
-- setelah memakai Ganti teks asli atau Garis & tabel, editor otomatis kembali ke tool Pilih dengan objek barunya sudah terpilih.
+- warna diisi lewat pemilih warna maupun kode hex, dan ukuran teks dipilih dari daftar ukuran umum.
 
 Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
 
 ### Ganti teks asli (cover & retype)
 
-Tool **Ganti teks asli** menyorot setiap potongan teks yang sudah ada di halaman. Klik salah satunya, dan Docuflow:
+Dengan tool Pilih, setiap potongan teks yang sudah ada di halaman langsung bisa diklik. Klik salah satunya, dan Docuflow:
 
 1. mengukur warna latar di sekeliling teks itu dari halaman yang sudah dirender;
 2. menebak warna tinta aslinya dari piksel yang paling jauh dari warna latar;
@@ -89,13 +92,13 @@ Teks itu kemudian tinggal diedit di panel Properti. Penutup dan teks penggantiny
 - Halaman hasil scan tidak punya teks yang bisa dipilih. Jalankan Searchable OCR lebih dulu.
 - Teks pengganti tidak mengalir ulang. Kalau teks baru lebih panjang, ia akan melewati batas teks lama.
 
-Setelah teks diganti, editor otomatis berpindah ke tool Pilih dan teks penggantinya sudah terpilih — jadi langsung bisa diedit isinya di panel Properti dan digeser posisinya di kanvas.
+Teks penggantinya langsung terpilih dan bisa digeser saat itu juga, diedit isinya di panel Properti, atau diubah langsung di kanvas dengan klik dua kali.
 
 Untuk mengubah teks berikut reflow paragrafnya, tetap dibutuhkan SDK komersial.
 
 ### Garis & tabel
 
-Tool **Garis & tabel** membaca operator grafis halaman dan mengenali garis lurus yang sudah ada: pembatas tabel, garis bawah, dan pemisah. Klik salah satunya, dan garis itu ditutup lalu digantikan objek garis baru yang bisa digeser, diubah warna dan ketebalannya, atau dihapus.
+Docuflow juga membaca operator grafis halaman dan mengenali garis lurus yang sudah ada: pembatas tabel, garis bawah, dan pemisah. Garis-garis itu ikut bisa diklik dengan tool Pilih, lalu ditutup dan digantikan objek garis baru yang bisa digeser, diubah warna dan ketebalannya, atau dihapus.
 
 Yang dikenali:
 

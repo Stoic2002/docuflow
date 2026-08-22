@@ -3,17 +3,20 @@ import { OverlayEditorEngine } from "@pdf-studio/pdf-engine";
 import { Button, Card, Tooltip } from "@pdf-studio/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Download, FileSearch, Minus, Plus, RotateCcw, Save } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, Download, FileSearch, Minus,
+  PanelRightClose, PanelRightOpen, Plus, RotateCcw, Save,
+} from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { capabilitiesQuery, fontsQuery, editSessionQuery, queryKeys } from "../../api/queries";
+import { capabilitiesQuery, editSessionQuery, fontsQuery, queryKeys } from "../../api/queries";
 import { ErrorState, LoadingState } from "../../components/async-state";
 import { clampZoom, useEditorStore } from "../../stores/editor-store";
 import { CapabilityNotice } from "../tools/tool-components";
 import { EditorCanvas } from "./overlay/editor-canvas";
-import { EditorToolbar } from "./overlay/toolbar";
 import { PropertiesPanel } from "./overlay/properties-panel";
 import { toAnnotationDocument, usedAssets } from "./overlay/serialize";
 import { useOverlayStore } from "./overlay/store";
+import { EditorToolbar } from "./overlay/toolbar";
 import { DEFAULT_STROKE_COLOR, MAX_ASSETS } from "./overlay/types";
 
 const limitMessages: Record<string, string> = {
@@ -35,6 +38,8 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const [activeColor, setActiveColor] = useState(DEFAULT_STROKE_COLOR);
   const [result, setResult] = useState<DirectToolResult>();
   const [notice, setNotice] = useState<string | null>(null);
+  const [showHints, setShowHints] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const detachWheel = useRef<(() => void) | null>(null);
 
@@ -46,7 +51,6 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const assets = useOverlayStore((state) => state.assets);
   const selectedId = useOverlayStore((state) => state.selectedId);
   const lastLimit = useOverlayStore((state) => state.lastLimit);
-  const tool = useOverlayStore((state) => state.tool);
   const add = useOverlayStore((state) => state.add);
   const remove = useOverlayStore((state) => state.remove);
   const undo = useOverlayStore((state) => state.undo);
@@ -92,7 +96,6 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
     engineRef.current?.markDirty(objects.length > 0);
   }, [objects.length]);
 
-  // Object URLs are created per inserted image and released on unmount.
   const previewUrls = useRef<string[]>([]);
   useEffect(() => () => {
     for (const url of previewUrls.current) URL.revokeObjectURL(url);
@@ -121,9 +124,6 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
     probe.src = url;
   }, [add, page, pageSize]);
 
-  // Trackpad pinch and Ctrl+wheel arrive as a wheel event with ctrlKey set.
-  // The listener is native because it must call preventDefault, which React's
-  // passive wheel handler cannot do.
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const zoomAnchor = useRef<{ x: number; y: number; factor: number } | null>(null);
@@ -141,15 +141,10 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       const current = zoomRef.current;
-      // Exponential steps keep a pinch smooth across the whole zoom range.
       const next = clampZoom(current * Math.exp(-event.deltaY / 180));
       if (Math.abs(next - current) < 0.0005) return;
       const rect = container.getBoundingClientRect();
-      zoomAnchor.current = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-        factor: next / current,
-      };
+      zoomAnchor.current = { x: event.clientX - rect.left, y: event.clientY - rect.top, factor: next / current };
       setZoom(next);
     };
     container.addEventListener("wheel", onWheel, { passive: false });
@@ -168,10 +163,15 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
     container.scrollTop = (container.scrollTop + anchor.y) * anchor.factor - anchor.y;
   }, [zoom]);
 
+  const panBy = useCallback((deltaX: number, deltaY: number) => {
+    scrollRef.current?.scrollBy({ left: deltaX, top: deltaY });
+  }, []);
+
   const exportMutation = useMutation({
     mutationFn: () => api.exportEditSession(sessionId, toAnnotationDocument(objects), usedAssets(objects, assets)),
     onSuccess: async (data) => {
       setResult(data);
+      setNotice(null);
       await queryClient.invalidateQueries({ queryKey: queryKeys.documents });
     },
   });
@@ -204,57 +204,56 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const busy = exportMutation.isPending;
 
   return (
-    <main className="mx-auto max-w-[1600px] px-4 py-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <main className="flex h-[calc(100dvh-4.5rem)] w-full flex-col gap-2 px-3 py-3 sm:px-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <p className="eyebrow">Edit PDF</p>
-          <h1 className="font-display mt-1 max-w-xl truncate text-3xl font-medium text-ink">{session.data.session.filename}</h1>
+          <h1 className="font-display mt-0.5 max-w-md truncate text-2xl font-medium text-ink">{session.data.session.filename}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="secondary" onClick={() => setZoom(zoom - 0.15)} aria-label="Perkecil"><Minus className="size-4" /></Button>
-          <Tooltip content="Cubit dua jari di trackpad, atau Ctrl + scroll, untuk zoom ke titik kursor">
-            <span className="min-w-14 cursor-help text-center text-sm font-semibold">{Math.round(zoom * 100)}%</span>
-          </Tooltip>
-          <Button type="button" variant="secondary" onClick={() => setZoom(zoom + 0.15)} aria-label="Perbesar"><Plus className="size-4" /></Button>
-          <Button asChild variant="secondary">
-            <a href={session.data.session.downloadUrl} download={session.data.session.filename}><Download className="size-4" /> Unduh original</a>
-          </Button>
+          <div className="flex items-center gap-1 rounded-2xl border border-line bg-paper px-1 py-1">
+            <Button type="button" variant="ghost" className="size-9 justify-center px-0" onClick={() => setZoom(zoom - 0.15)} aria-label="Perkecil"><Minus className="size-4" /></Button>
+            <Tooltip content="Cubit dua jari di trackpad, atau Ctrl + scroll, untuk zoom ke titik kursor">
+              <span className="min-w-14 cursor-help text-center text-sm font-semibold">{Math.round(zoom * 100)}%</span>
+            </Tooltip>
+            <Button type="button" variant="ghost" className="size-9 justify-center px-0" onClick={() => setZoom(zoom + 0.15)} aria-label="Perbesar"><Plus className="size-4" /></Button>
+          </div>
+          {result ? (
+            <Button asChild variant="secondary">
+              <a href={result.downloadUrl} download={result.outputName ?? session.data.session.filename}>
+                <Download className="size-4" /> Unduh hasil edit
+              </a>
+            </Button>
+          ) : null}
           <Button type="button" disabled={!canAnnotate || objects.length === 0 || busy} onClick={() => exportMutation.mutate()}>
-            <Save className="size-4" /> {busy ? "Menyimpan…" : "Simpan sebagai versi baru"}
+            <Save className="size-4" /> {busy ? "Menyimpan…" : result ? "Simpan lagi" : "Simpan"}
           </Button>
+          <Tooltip content={panelOpen ? "Sembunyikan panel" : "Tampilkan panel"}>
+            <span>
+              <Button type="button" variant="ghost" className="size-10 justify-center px-0" aria-label={panelOpen ? "Sembunyikan panel" : "Tampilkan panel"} onClick={() => setPanelOpen(!panelOpen)}>
+                {panelOpen ? <PanelRightClose className="size-[18px]" /> : <PanelRightOpen className="size-[18px]" />}
+              </Button>
+            </span>
+          </Tooltip>
         </div>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} showHints={showHints} onToggleHints={setShowHints} />
+        {!canAnnotate ? <CapabilityNotice reason={capabilities.data.tools.qpdf.reason ?? "qpdf atau pdfinfo belum tersedia di PATH backend."} /> : null}
       </div>
 
-      {!canAnnotate ? <div className="mt-3"><CapabilityNotice reason={capabilities.data.tools.qpdf.reason ?? "qpdf atau pdfinfo belum tersedia di PATH backend."} /></div> : null}
-      {textLayer === "absent" ? (
-        <Card className="mt-3 border-accent/40 bg-accent-soft p-4 text-sm text-ink">
-          <div className="flex items-start gap-3">
-            <FileSearch className="mt-0.5 size-5" />
-            <div>
-              <p className="font-bold">Text layer tidak ditemukan pada halaman sampel.</p>
-              <p className="mt-1">Dokumen ini kemungkinan hasil scan. Anotasi tetap bisa ditambahkan di atasnya.</p>
-              <Button asChild className="mt-3"><Link to="/ocr">Buka OCR</Link></Button>
-            </div>
-          </div>
-        </Card>
+      {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
+      {notice ? <p className="text-xs font-bold text-accent" role="status">{notice}</p> : null}
+      {exportMutation.isError ? (
+        <p className="text-xs font-bold text-accent" role="alert">
+          Gagal menyimpan: {userFacingError(exportMutation.error)} Original tetap aman.
+        </p>
       ) : null}
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="space-y-3">
-          <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} />
-          {lastLimit ? <p className="text-xs font-bold text-accent" role="alert">{limitMessages[lastLimit]}</p> : null}
-          {tool === "rules" ? (
-            <p className="text-xs leading-5 text-muted">
-              Docuflow membaca garis vektor pada halaman — pembatas tabel, garis bawah, dan pemisah. Klik salah satunya untuk menutupnya lalu menggantinya dengan garis baru yang bisa digeser, diubah warnanya, atau dihapus. Tabel dikenali sebagai kumpulan garisnya, bukan sebagai satu objek utuh.
-            </p>
-          ) : null}
-          {tool === "retype" ? (
-            <p className="text-xs leading-5 text-muted">
-              Klik teks yang disorot untuk menggantinya. Docuflow menutup teks lama dengan warna latar di sekitarnya lalu menulis teks baru di atasnya — rapi pada latar polos, terlihat pada latar bergambar atau bergradasi. Teks pengganti tidak mengalir ulang, jadi teks yang lebih panjang akan melewati batas teks lama. Teks asli juga tetap ada di dalam file, tertutup, sehingga cara ini <b>bukan</b> redaksi yang aman.
-            </p>
-          ) : null}
-          {notice ? <p className="text-xs font-bold text-accent" role="status">{notice}</p> : null}
-          <div ref={attachScroll} className="flex max-h-[74vh] justify-center overflow-auto rounded-[1.75rem] border border-ink bg-canvas p-5">
+      <div className="relative min-h-0 flex-1">
+        <div ref={attachScroll} className="h-full overflow-auto rounded-[1.5rem] border border-ink bg-canvas">
+          <div className="flex min-h-full w-max min-w-full justify-center p-6">
             {engine && pageSize ? (
               <EditorCanvas
                 engine={engine}
@@ -263,57 +262,85 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
                 pageHeight={pageSize.height}
                 scale={zoom}
                 fonts={fonts}
-                activeFont=""
                 activeColor={activeColor}
+                showHints={showHints}
                 onNotice={setNotice}
+                onPan={panBy}
               />
             ) : (
-              <LoadingState label="Menyiapkan halaman…" />
+              <div className="self-center"><LoadingState label="Menyiapkan halaman…" /></div>
             )}
-          </div>
-          <div className="flex items-center justify-center gap-3">
-            <Button type="button" variant="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></Button>
-            <span className="text-sm font-semibold text-muted">Halaman {page} dari {pageCount || "…"}</span>
-            <Button type="button" variant="secondary" disabled={page >= pageCount} onClick={() => setPage(page + 1)} aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></Button>
           </div>
         </div>
 
-        <aside className="space-y-4">
-          <Card className="p-5">
-            <h2 className="text-lg font-black text-ink">Warna aktif</h2>
-            <p className="mt-1 text-xs leading-5 text-muted">Dipakai untuk objek baru. Objek yang sudah ada diubah lewat panel Properti.</p>
-            <input
-              type="color"
-              value={activeColor}
-              aria-label="Warna aktif"
-              onChange={(event) => setActiveColor(event.target.value)}
-              className="mt-3 h-10 w-full cursor-pointer rounded-lg border border-line bg-paper p-1"
-            />
-          </Card>
-          <PropertiesPanel fonts={fonts} fontsAvailable={fonts.length > 0} />
-          <Card className="p-5 text-sm">
-            <div className="flex justify-between"><span className="text-muted">Objek di dokumen</span><b className="text-ink">{objects.length}</b></div>
-            <div className="mt-2 flex justify-between"><span className="text-muted">Gambar</span><b className="text-ink">{Object.keys(assets).length}</b></div>
-          </Card>
-        </aside>
-      </div>
-
-      {exportMutation.isError ? (
-        <Card className="mt-4 border-accent bg-accent-soft p-5 text-sm text-ink" role="alert">
-          <b>Gagal menyimpan.</b> {userFacingError(exportMutation.error)} Original tetap aman.
-        </Card>
-      ) : null}
-      {result ? (
-        <Card className="mt-4 border-ink bg-paper p-6 shadow-[6px_6px_0_#ff2d2d]" role="status">
-          <p className="eyebrow">Tersimpan</p>
-          <h2 className="font-display mt-2 text-3xl font-medium text-ink">Versi baru siap diunduh</h2>
-          <p className="mt-2 text-sm text-muted">Original tidak berubah. Hasilnya juga muncul di Recent Files.</p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Button asChild><a href={result.downloadUrl} download={result.outputName ?? session.data.session.filename}><Download className="size-4" /> Unduh hasil</a></Button>
-            <Button type="button" variant="secondary" onClick={() => { setResult(undefined); exportMutation.reset(); }}><RotateCcw className="size-4" /> Lanjut mengedit</Button>
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-ink bg-paper/95 px-2 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,.12)] backdrop-blur">
+            <Button type="button" variant="ghost" className="size-8 justify-center px-0" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></Button>
+            <span className="text-xs font-bold text-ink">{page} / {pageCount || "…"}</span>
+            <Button type="button" variant="ghost" className="size-8 justify-center px-0" disabled={page >= pageCount} onClick={() => setPage(page + 1)} aria-label="Halaman berikutnya"><ChevronRight className="size-4" /></Button>
           </div>
-        </Card>
-      ) : null}
+        </div>
+
+        {panelOpen ? (
+          <aside className="absolute right-3 top-3 flex max-h-[calc(100%-1.5rem)] w-72 flex-col gap-3 overflow-y-auto rounded-2xl">
+            {textLayer === "absent" ? (
+              <Card className="border-accent/40 bg-accent-soft p-4 text-xs leading-5 text-ink">
+                <div className="flex items-start gap-2">
+                  <FileSearch className="mt-0.5 size-4 shrink-0" />
+                  <div>
+                    <p className="font-bold">Halaman ini kemungkinan hasil scan.</p>
+                    <p className="mt-1">Teksnya tidak bisa diambil alih karena berupa gambar. Jalankan OCR lebih dulu.</p>
+                    <Button asChild className="mt-2"><Link to="/ocr">Buka OCR</Link></Button>
+                  </div>
+                </div>
+              </Card>
+            ) : null}
+            <Card className="p-4">
+              <h2 className="text-sm font-black text-ink">Warna untuk objek baru</h2>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="color"
+                  value={activeColor}
+                  aria-label="Warna untuk objek baru"
+                  onChange={(event) => setActiveColor(event.target.value)}
+                  className="size-9 shrink-0 cursor-pointer rounded-lg border border-line bg-paper p-1"
+                />
+                <input
+                  type="text"
+                  value={activeColor}
+                  maxLength={7}
+                  spellCheck={false}
+                  aria-label="Warna untuk objek baru: kode hex"
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    if (/^#?[0-9a-fA-F]{6}$/.test(next)) setActiveColor(next.startsWith("#") ? next : `#${next}`);
+                  }}
+                  className="form-control font-mono text-sm uppercase"
+                />
+              </div>
+            </Card>
+            <PropertiesPanel fonts={fonts} fontsAvailable={fonts.length > 0} />
+            <Card className="p-4 text-xs">
+              <div className="flex justify-between"><span className="text-muted">Objek</span><b className="text-ink">{objects.length}</b></div>
+              <div className="mt-1.5 flex justify-between"><span className="text-muted">Gambar</span><b className="text-ink">{Object.keys(assets).length}</b></div>
+              <p className="mt-3 leading-5 text-muted">
+                Klik teks atau garis di halaman untuk mengambil alih dan mengeditnya. Klik dua kali pada teks untuk mengubahnya langsung di kanvas.
+                Tahan <b>Spasi</b> lalu tarik untuk menggeser halaman.
+              </p>
+            </Card>
+            {result ? (
+              <Card className="border-ink bg-paper p-4 shadow-[4px_4px_0_#ff2d2d]" role="status">
+                <p className="text-sm font-black text-ink">Versi baru tersimpan</p>
+                <p className="mt-1 text-xs leading-5 text-muted">Original tidak berubah dan hasilnya muncul di Recent Files.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button asChild className="grow"><a href={result.downloadUrl} download={result.outputName ?? session.data.session.filename}><Download className="size-4" /> Unduh</a></Button>
+                  <Button type="button" variant="ghost" aria-label="Tutup ringkasan" onClick={() => { setResult(undefined); exportMutation.reset(); }}><RotateCcw className="size-4" /></Button>
+                </div>
+              </Card>
+            ) : null}
+          </aside>
+        ) : null}
+      </div>
     </main>
   );
 }

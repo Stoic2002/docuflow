@@ -216,3 +216,34 @@ export function countTableGrids(rules: PdfVectorRule[], tolerance = 4): number {
   }
   return grids;
 }
+
+/** Something already printed on the page that the editor can take over. */
+export type DetectedTarget =
+  | { kind: "run"; run: PdfTextRun; box: CoverBox }
+  | { kind: "rule"; rule: PdfVectorRule; box: CoverBox };
+
+export function detectedTargets(runs: PdfTextRun[], rules: PdfVectorRule[]): DetectedTarget[] {
+  return [
+    ...runs.map((run) => ({ kind: "run" as const, run, box: coverBoxFor(run) })),
+    ...rules.map((rule) => ({ kind: "rule" as const, rule, box: ruleCoverBox(rule) })),
+  ];
+}
+
+/**
+ * Finds the printed element under a point. Text wins over rules when they
+ * overlap, because a rule under a line of text is almost never the target.
+ */
+export function hitDetected(targets: DetectedTarget[], x: number, y: number, slack = 0): DetectedTarget | null {
+  const inside = (target: DetectedTarget) => {
+    const pad = target.kind === "rule" ? Math.max(slack, 3) : slack;
+    return (
+      x >= target.box.x - pad &&
+      x <= target.box.x + target.box.width + pad &&
+      y >= target.box.y - pad &&
+      y <= target.box.y + target.box.height + pad
+    );
+  };
+  return targets.find((target) => target.kind === "run" && inside(target))
+    ?? targets.find((target) => target.kind === "rule" && inside(target))
+    ?? null;
+}

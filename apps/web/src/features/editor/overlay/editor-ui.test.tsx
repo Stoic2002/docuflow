@@ -20,40 +20,68 @@ const text: TextObject = {
 beforeEach(() => state().reset());
 afterEach(cleanup);
 
+function toolbar(props: Partial<Parameters<typeof EditorToolbar>[0]> = {}) {
+  return (
+    <EditorToolbar
+      onPickImage={vi.fn()}
+      disabled={false}
+      showHints={false}
+      onToggleHints={vi.fn()}
+      {...props}
+    />
+  );
+}
+
 describe("EditorToolbar", () => {
   it("marks the active tool and switches on click", () => {
-    render(<EditorToolbar onPickImage={vi.fn()} disabled={false} />);
-    expect(screen.getByLabelText("Pilih & geser")).toHaveAttribute("aria-pressed", "true");
+    render(toolbar());
+    expect(screen.getByLabelText("Pilih")).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByLabelText("Kotak"));
     expect(state().tool).toBe("rectangle");
     expect(screen.getByLabelText("Kotak")).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("offers a hand tool for dragging the page", () => {
+    render(toolbar());
+    fireEvent.click(screen.getByLabelText("Geser halaman"));
+    expect(state().tool).toBe("hand");
+  });
+
+  it("no longer needs a separate mode for replacing printed text", () => {
+    render(toolbar());
+    // Picking happens straight from Select, so these modes are gone.
+    expect(screen.queryByLabelText("Ganti teks asli")).toBeNull();
+    expect(screen.queryByLabelText("Garis & tabel")).toBeNull();
+  });
+
   it("keeps undo, redo, and delete disabled until they can do something", () => {
-    render(<EditorToolbar onPickImage={vi.fn()} disabled={false} />);
+    render(toolbar());
     expect(screen.getByLabelText("Urungkan")).toBeDisabled();
     expect(screen.getByLabelText("Ulangi")).toBeDisabled();
     expect(screen.getByLabelText("Hapus objek terpilih")).toBeDisabled();
   });
 
   it("enables undo and delete once an object exists and is selected", () => {
-    const view = render(<EditorToolbar onPickImage={vi.fn()} disabled={false} />);
+    const view = render(toolbar());
     state().add(box);
-    view.rerender(<EditorToolbar onPickImage={vi.fn()} disabled={false} />);
+    view.rerender(toolbar());
     expect(screen.getByLabelText("Urungkan")).toBeEnabled();
     expect(screen.getByLabelText("Hapus objek terpilih")).toBeEnabled();
     fireEvent.click(screen.getByLabelText("Hapus objek terpilih"));
     expect(state().objects).toHaveLength(0);
   });
 
-  it("offers the retype tool for replacing text already on the page", () => {
-    render(<EditorToolbar onPickImage={vi.fn()} disabled={false} />);
-    fireEvent.click(screen.getByLabelText("Ganti teks asli"));
-    expect(state().tool).toBe("retype");
+  it("reports the highlight toggle as pressed and calls back", () => {
+    const onToggleHints = vi.fn();
+    render(toolbar({ showHints: true, onToggleHints }));
+    const toggle = screen.getByLabelText("Sorot elemen asli");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(toggle);
+    expect(onToggleHints).toHaveBeenCalledWith(false);
   });
 
   it("disables every control when the capability is unavailable", () => {
-    render(<EditorToolbar onPickImage={vi.fn()} disabled />);
+    render(toolbar({ disabled: true }));
     expect(screen.getByLabelText("Teks")).toBeDisabled();
     expect(screen.getByLabelText("Sisipkan JPG")).toBeDisabled();
   });
@@ -98,6 +126,53 @@ describe("PropertiesPanel", () => {
     state().add({ ...box, strokeWidth: 0 });
     render(<PropertiesPanel fonts={fonts} fontsAvailable />);
     expect(screen.getByRole("alert")).toHaveTextContent("tidak akan terlihat");
+  });
+
+  it("sets a colour from a typed hex code", () => {
+    state().add(box);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    const hex = screen.getByLabelText("Warna garis: kode hex");
+    fireEvent.change(hex, { target: { value: "#2e7d32" } });
+    expect((state().objects[0] as BoxObject).stroke).toBe("#2e7d32");
+  });
+
+  it("accepts a hex code without the leading hash", () => {
+    state().add(box);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    fireEvent.change(screen.getByLabelText("Warna garis: kode hex"), { target: { value: "ab12cd" } });
+    expect((state().objects[0] as BoxObject).stroke).toBe("#ab12cd");
+  });
+
+  it("ignores a half-typed hex instead of blanking the colour", () => {
+    state().add(box);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    const hex = screen.getByLabelText("Warna garis: kode hex");
+    fireEvent.focus(hex);
+    fireEvent.change(hex, { target: { value: "#2e7" } });
+    expect((state().objects[0] as BoxObject).stroke).toBe("#1565c0");
+  });
+
+  it("picks the text size from a dropdown of usable sizes", () => {
+    state().add(text);
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    const select = screen.getByLabelText("Ukuran teks") as HTMLSelectElement;
+    expect(select.tagName).toBe("SELECT");
+    fireEvent.change(select, { target: { value: "24" } });
+    expect((state().objects[0] as TextObject).fontSize).toBe(24);
+  });
+
+  it("keeps the odd size a retyped run carries as its own option", () => {
+    state().add({ ...text, fontSize: 11.4 });
+    render(<PropertiesPanel fonts={fonts} fontsAvailable />);
+    const select = screen.getByLabelText("Ukuran teks") as HTMLSelectElement;
+    expect([...select.options].map((option) => option.value)).toContain("11.4");
+    expect(select.value).toBe("11.4");
+  });
+
+  it("says where fonts go when the registry is empty", () => {
+    state().add(text);
+    render(<PropertiesPanel fonts={[]} fontsAvailable={false} />);
+    expect(screen.getByText(/assets\/fonts\//)).toBeVisible();
   });
 
   it("changes opacity through the slider", () => {

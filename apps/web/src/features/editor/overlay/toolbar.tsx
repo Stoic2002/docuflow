@@ -1,22 +1,59 @@
 import { Button, Tooltip } from "@pdf-studio/ui";
-import { Circle, ImagePlus, Minus, MousePointer2, Pencil, Redo2, Replace, Square, Table2, Trash2, Type, Undo2 } from "lucide-react";
+import {
+  Circle, Hand, Highlighter, ImagePlus, Minus, MousePointer2,
+  Pencil, Redo2, Square, Trash2, Type, Undo2,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useRef } from "react";
 import { useOverlayStore } from "./store";
 import { MAX_ASSETS, type OverlayTool } from "./types";
 
-const tools: { tool: OverlayTool; label: string; icon: LucideIcon }[] = [
-  { tool: "select", label: "Pilih & geser", icon: MousePointer2 },
-  { tool: "text", label: "Teks", icon: Type },
-  { tool: "rectangle", label: "Kotak", icon: Square },
-  { tool: "ellipse", label: "Elips", icon: Circle },
-  { tool: "line", label: "Garis", icon: Minus },
-  { tool: "draw", label: "Gambar bebas", icon: Pencil },
-  { tool: "retype", label: "Ganti teks asli", icon: Replace },
-  { tool: "rules", label: "Garis & tabel", icon: Table2 },
+const groups: { tool: OverlayTool; label: string; hint: string; icon: LucideIcon }[][] = [
+  [
+    { tool: "select", label: "Pilih", hint: "Klik elemen apa pun di halaman untuk mengambil alih dan mengeditnya. Tarik area kosong untuk menggeser halaman.", icon: MousePointer2 },
+    { tool: "hand", label: "Geser halaman", hint: "Tarik untuk menggeser. Menahan Spasi memberi efek yang sama dari tool mana pun.", icon: Hand },
+  ],
+  [
+    { tool: "text", label: "Teks", hint: "Klik di halaman untuk menaruh teks baru, lalu langsung ketik.", icon: Type },
+    { tool: "rectangle", label: "Kotak", hint: "Tarik untuk menggambar kotak.", icon: Square },
+    { tool: "ellipse", label: "Elips", hint: "Tarik untuk menggambar elips.", icon: Circle },
+    { tool: "line", label: "Garis", hint: "Tarik untuk menggambar garis lurus.", icon: Minus },
+    { tool: "draw", label: "Coret bebas", hint: "Tarik untuk mencoret dengan tangan bebas.", icon: Pencil },
+  ],
 ];
 
-export function EditorToolbar({ onPickImage, disabled }: { onPickImage: (file: File) => void; disabled: boolean }) {
+function ToolButton({ active, label, hint, icon: Icon, disabled, onClick }: {
+  active: boolean; label: string; hint: string; icon: LucideIcon; disabled: boolean; onClick: () => void;
+}) {
+  return (
+    <Tooltip content={<span><b>{label}</b><br />{hint}</span>}>
+      <span>
+        <Button
+          type="button"
+          variant={active ? "primary" : "ghost"}
+          className="size-10 justify-center px-0"
+          aria-pressed={active}
+          aria-label={label}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          <Icon className="size-[18px]" />
+        </Button>
+      </span>
+    </Tooltip>
+  );
+}
+
+function Divider() {
+  return <span className="mx-1 h-7 w-px shrink-0 bg-line" aria-hidden="true" />;
+}
+
+export function EditorToolbar({ onPickImage, disabled, showHints, onToggleHints }: {
+  onPickImage: (file: File) => void;
+  disabled: boolean;
+  showHints: boolean;
+  onToggleHints: (next: boolean) => void;
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
   const tool = useOverlayStore((state) => state.tool);
   const setTool = useOverlayStore((state) => state.setTool);
@@ -29,37 +66,32 @@ export function EditorToolbar({ onPickImage, disabled }: { onPickImage: (file: F
   const assetCount = useOverlayStore((state) => Object.keys(state.assets).length);
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-ink bg-paper p-2">
-      {tools.map(({ tool: kind, label, icon: Icon }) => (
-        <Tooltip key={kind} content={label}>
-          <Button
-            type="button"
-            variant={tool === kind ? "primary" : "ghost"}
-            className="px-3"
-            aria-pressed={tool === kind}
-            aria-label={label}
-            disabled={disabled}
-            onClick={() => setTool(kind)}
-          >
-            <Icon className="size-4" />
-          </Button>
-        </Tooltip>
+    <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-ink bg-paper px-2 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,.06)]">
+      {groups.map((group, index) => (
+        <span key={index} className="flex items-center gap-1">
+          {index > 0 ? <Divider /> : null}
+          {group.map(({ tool: kind, label, hint, icon }) => (
+            <ToolButton
+              key={kind}
+              active={tool === kind}
+              label={label}
+              hint={hint}
+              icon={icon}
+              disabled={disabled}
+              onClick={() => setTool(kind)}
+            />
+          ))}
+        </span>
       ))}
 
-      <Tooltip content={assetCount >= MAX_ASSETS ? `Maksimal ${MAX_ASSETS} gambar` : "Sisipkan JPG"}>
-        <span>
-          <Button
-            type="button"
-            variant="ghost"
-            className="px-3"
-            aria-label="Sisipkan JPG"
-            disabled={disabled || assetCount >= MAX_ASSETS}
-            onClick={() => fileRef.current?.click()}
-          >
-            <ImagePlus className="size-4" />
-          </Button>
-        </span>
-      </Tooltip>
+      <ToolButton
+        active={false}
+        label="Sisipkan JPG"
+        hint={assetCount >= MAX_ASSETS ? `Maksimal ${MAX_ASSETS} gambar per dokumen.` : "Pilih file JPG untuk ditaruh di tengah halaman."}
+        icon={ImagePlus}
+        disabled={disabled || assetCount >= MAX_ASSETS}
+        onClick={() => fileRef.current?.click()}
+      />
       <input
         ref={fileRef}
         type="file"
@@ -72,36 +104,29 @@ export function EditorToolbar({ onPickImage, disabled }: { onPickImage: (file: F
         }}
       />
 
-      <span className="mx-1 h-6 w-px bg-line" aria-hidden="true" />
+      <Divider />
 
-      <Tooltip content="Urungkan">
-        <span>
-          <Button type="button" variant="ghost" className="px-3" aria-label="Urungkan" disabled={disabled || past.length === 0} onClick={undo}>
-            <Undo2 className="size-4" />
-          </Button>
-        </span>
-      </Tooltip>
-      <Tooltip content="Ulangi">
-        <span>
-          <Button type="button" variant="ghost" className="px-3" aria-label="Ulangi" disabled={disabled || future.length === 0} onClick={redo}>
-            <Redo2 className="size-4" />
-          </Button>
-        </span>
-      </Tooltip>
-      <Tooltip content="Hapus objek terpilih">
-        <span>
-          <Button
-            type="button"
-            variant="ghost"
-            className="px-3"
-            aria-label="Hapus objek terpilih"
-            disabled={disabled || !selectedId}
-            onClick={() => selectedId && remove(selectedId)}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        </span>
-      </Tooltip>
+      <ToolButton active={false} label="Urungkan" hint="Ctrl/Cmd + Z" icon={Undo2} disabled={disabled || past.length === 0} onClick={undo} />
+      <ToolButton active={false} label="Ulangi" hint="Ctrl/Cmd + Shift + Z" icon={Redo2} disabled={disabled || future.length === 0} onClick={redo} />
+      <ToolButton
+        active={false}
+        label="Hapus objek terpilih"
+        hint="Delete"
+        icon={Trash2}
+        disabled={disabled || !selectedId}
+        onClick={() => selectedId && remove(selectedId)}
+      />
+
+      <Divider />
+
+      <ToolButton
+        active={showHints}
+        label="Sorot elemen asli"
+        hint="Tandai semua teks dan garis di halaman yang bisa diambil alih. Tanpa ini, sorotan hanya muncul saat kursor melewatinya."
+        icon={Highlighter}
+        disabled={disabled}
+        onClick={() => onToggleHints(!showHints)}
+      />
     </div>
   );
 }
