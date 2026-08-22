@@ -19,7 +19,7 @@ export function EditLandingPage() {
       <PageHeading eyebrow="Edit PDF" title="Mulai dari file Anda" description="Unggah langsung untuk membuka editor. Tambahkan teks, bentuk, coretan, dan gambar di atas halaman. Tidak perlu memilih dari Recent Files." align="center" />
       <div className="mt-10 space-y-5">
         {capabilities.data && !capabilities.data.nativeContentEditing ? (
-          <CapabilityNotice title="Menambah objek, bukan mengubah teks asli" reason="Anda dapat menambahkan teks, bentuk, coretan, dan gambar di atas halaman, lalu menyimpannya sebagai versi baru. Mengubah teks yang sudah ada di dalam PDF masih memerlukan SDK komersial yang belum dikonfigurasi." />
+          <CapabilityNotice title="Yang bisa dan belum bisa dilakukan di sini" reason="Anda dapat menambahkan teks, bentuk, coretan, dan gambar, serta mengganti teks yang sudah ada lewat tool Ganti teks asli. Yang belum bisa adalah mengubah teks sambil mengalirkan ulang paragrafnya seperti di Word — itu memerlukan SDK komersial yang belum dikonfigurasi." />
         ) : null}
         <ToolDropzone
           onFiles={(files) => files[0] && mutation.mutate(files[0])}

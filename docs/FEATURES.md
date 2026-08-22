@@ -65,7 +65,8 @@ Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atas
 - geser objek dengan tool Pilih;
 - panel Properti untuk warna, isi, ketebalan garis, ukuran teks, font, perataan, opacity, dan rotasi;
 - undo/redo, hapus objek terpilih, navigasi halaman, dan zoom;
-- pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi.
+- pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi;
+- zoom dengan cubit dua jari di trackpad atau `Ctrl` + scroll, yang memperbesar ke titik kursor; usap dua jari biasa tetap menggulung halaman.
 
 Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
 

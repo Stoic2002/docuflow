@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useEditorStore } from "./editor-store";
+import { ZOOM_MAX, ZOOM_MIN, clampZoom, useEditorStore } from "./editor-store";
 
 describe("editor store", () => {
   beforeEach(() => useEditorStore.getState().reset());
@@ -23,5 +23,21 @@ describe("editor store", () => {
     useEditorStore.getState().setZoom(0);
     useEditorStore.getState().reset();
     expect(useEditorStore.getState()).toMatchObject({ selectedTool: "select", zoom: 1, dirtyUi: false });
+  });
+});
+
+describe("clampZoom", () => {
+  it("keeps zoom inside the range the canvas can render", () => {
+    expect(clampZoom(1)).toBe(1);
+    expect(clampZoom(0.01)).toBe(ZOOM_MIN);
+    expect(clampZoom(99)).toBe(ZOOM_MAX);
+  });
+
+  it("survives a NaN from a malformed wheel delta", () => {
+    expect(clampZoom(Number.NaN)).toBe(1);
+  });
+
+  it("accepts the fine-grained steps a trackpad pinch produces", () => {
+    expect(clampZoom(1 * Math.exp(-3 / 180))).toBeCloseTo(0.9835, 3);
   });
 });

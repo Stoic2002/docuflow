@@ -1,13 +1,13 @@
 import { api, userFacingError, type DirectToolResult } from "@pdf-studio/api-client";
 import { OverlayEditorEngine } from "@pdf-studio/pdf-engine";
-import { Button, Card } from "@pdf-studio/ui";
+import { Button, Card, Tooltip } from "@pdf-studio/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Download, FileSearch, Minus, Plus, RotateCcw, Save } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { capabilitiesQuery, fontsQuery, editSessionQuery, queryKeys } from "../../api/queries";
 import { ErrorState, LoadingState } from "../../components/async-state";
-import { useEditorStore } from "../../stores/editor-store";
+import { clampZoom, useEditorStore } from "../../stores/editor-store";
 import { CapabilityNotice } from "../tools/tool-components";
 import { EditorCanvas } from "./overlay/editor-canvas";
 import { EditorToolbar } from "./overlay/toolbar";
@@ -35,6 +35,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const [activeColor, setActiveColor] = useState(DEFAULT_STROKE_COLOR);
   const [result, setResult] = useState<DirectToolResult>();
   const [notice, setNotice] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const page = useEditorStore((state) => state.selectedPage);
   const setPage = useEditorStore((state) => state.setSelectedPage);
@@ -119,6 +120,46 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
     probe.src = url;
   }, [add, page, pageSize]);
 
+  // Trackpad pinch and Ctrl+wheel arrive as a wheel event with ctrlKey set.
+  // The listener is native because it must call preventDefault, which React's
+  // passive wheel handler cannot do.
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const zoomAnchor = useRef<{ x: number; y: number; factor: number } | null>(null);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const onWheel = (event: WheelEvent) => {
+      // A plain two-finger swipe keeps scrolling the page; only a pinch zooms.
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const current = zoomRef.current;
+      // Exponential steps keep a pinch smooth across the whole zoom range.
+      const next = clampZoom(current * Math.exp(-event.deltaY / 180));
+      if (Math.abs(next - current) < 0.0005) return;
+      const rect = container.getBoundingClientRect();
+      zoomAnchor.current = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+        factor: next / current,
+      };
+      setZoom(next);
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [setZoom]);
+
+  // Keep whatever sat under the cursor in place once the new size is laid out.
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    const anchor = zoomAnchor.current;
+    if (!container || !anchor) return;
+    zoomAnchor.current = null;
+    container.scrollLeft = (container.scrollLeft + anchor.x) * anchor.factor - anchor.x;
+    container.scrollTop = (container.scrollTop + anchor.y) * anchor.factor - anchor.y;
+  }, [zoom]);
+
   const exportMutation = useMutation({
     mutationFn: () => api.exportEditSession(sessionId, toAnnotationDocument(objects), usedAssets(objects, assets)),
     onSuccess: async (data) => {
@@ -163,7 +204,9 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="secondary" onClick={() => setZoom(zoom - 0.15)} aria-label="Perkecil"><Minus className="size-4" /></Button>
-          <span className="min-w-14 text-center text-sm font-semibold">{Math.round(zoom * 100)}%</span>
+          <Tooltip content="Cubit dua jari di trackpad, atau Ctrl + scroll, untuk zoom ke titik kursor">
+            <span className="min-w-14 cursor-help text-center text-sm font-semibold">{Math.round(zoom * 100)}%</span>
+          </Tooltip>
           <Button type="button" variant="secondary" onClick={() => setZoom(zoom + 0.15)} aria-label="Perbesar"><Plus className="size-4" /></Button>
           <Button asChild variant="secondary">
             <a href={session.data.session.downloadUrl} download={session.data.session.filename}><Download className="size-4" /> Unduh original</a>
@@ -176,8 +219,8 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
 
       {!capabilities.data.nativeContentEditing ? (
         <CapabilityNotice
-          title="Anda dapat menambah objek, bukan mengubah teks asli"
-          reason="Teks dan gambar yang sudah ada di dalam PDF hanya bisa diubah dengan SDK komersial yang belum dikonfigurasi. Objek yang Anda tambahkan di sini digabungkan ke halaman, dan original tetap utuh."
+          title="Yang bisa dan belum bisa dilakukan di sini"
+          reason="Anda dapat menambah objek baru, dan mengganti teks yang sudah ada lewat tool Ganti teks asli. Yang belum bisa adalah mengubah teks sambil mengalirkan ulang paragrafnya: teks pengganti yang lebih panjang akan melewati batas teks lama. Reflow memerlukan SDK komersial yang belum dikonfigurasi. Apa pun yang Anda lakukan, original tetap utuh dan hasilnya disimpan sebagai versi baru."
         />
       ) : null}
       {!canAnnotate ? <div className="mt-3"><CapabilityNotice reason={capabilities.data.tools.qpdf.reason ?? "qpdf atau pdfinfo belum tersedia di PATH backend."} /></div> : null}
@@ -204,7 +247,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
             </p>
           ) : null}
           {notice ? <p className="text-xs font-bold text-accent" role="status">{notice}</p> : null}
-          <div className="flex max-h-[74vh] justify-center overflow-auto rounded-[1.75rem] border border-ink bg-canvas p-5">
+          <div ref={scrollRef} className="flex max-h-[74vh] justify-center overflow-auto rounded-[1.75rem] border border-ink bg-canvas p-5">
             {engine && pageSize ? (
               <EditorCanvas
                 engine={engine}
