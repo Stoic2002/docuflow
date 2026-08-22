@@ -95,3 +95,44 @@ export function effectiveStyle(
     italic: inherited.italic || Boolean(selected.italic),
   };
 }
+
+/** Turns "LiberationSans-Bold" into "Liberation Sans" for a group heading. */
+export function displayFamily(family: string): string {
+  const withoutStyle = family.replace(/[-_ ]?(BoldItalic|BoldOblique|Bold|Italic|Oblique|Regular|Book|Roman)$/i, "");
+  return withoutStyle
+    .replace(/[-_]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim() || family;
+}
+
+/** Names the face within its family: Regular, Bold, Italic, Bold Italic. */
+export function displayStyle(family: string): string {
+  const { style } = splitFamily(family);
+  if (style.bold && style.italic) return "Bold Italic";
+  if (style.bold) return "Bold";
+  if (style.italic) return "Italic";
+  return "Regular";
+}
+
+export type FontFamilyGroup = { name: string; faces: RegisteredFont[] };
+
+/**
+ * Groups faces under their family. Panose would be the structural way to sort a
+ * long list into sans, serif, and script, but it is left zeroed in a great many
+ * shipping fonts, so the family name — which foundries do fill in — is the
+ * signal that actually works.
+ */
+export function groupByFamily(fonts: RegisteredFont[]): FontFamilyGroup[] {
+  const groups = new Map<string, FontFamilyGroup>();
+  for (const font of fonts) {
+    const name = displayFamily(font.family);
+    const group = groups.get(name) ?? { name, faces: [] };
+    group.faces.push(font);
+    groups.set(name, group);
+  }
+  const order = ["Regular", "Italic", "Bold", "Bold Italic"];
+  for (const group of groups.values()) {
+    group.faces.sort((left, right) => order.indexOf(displayStyle(left.family)) - order.indexOf(displayStyle(right.family)));
+  }
+  return [...groups.values()].sort((left, right) => left.name.localeCompare(right.name));
+}

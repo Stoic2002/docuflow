@@ -16,9 +16,9 @@ describe("flipY", () => {
 
 describe("fontStack", () => {
   const fonts = [
-    { id: "arialmt", family: "ArialMT", serif: false, fixed: false },
-    { id: "georgia", family: "Georgia", serif: true, fixed: false },
-    { id: "couriernewpsmt", family: "CourierNewPSMT", serif: true, fixed: true },
+    { id: "arialmt", family: "ArialMT", serif: false, fixed: false, category: "sans" as const },
+    { id: "georgia", family: "Georgia", serif: true, fixed: false, category: "serif" as const },
+    { id: "couriernewpsmt", family: "CourierNewPSMT", serif: true, fixed: true, category: "mono" as const },
   ];
 
   it("pairs each face with a matching generic fallback", () => {

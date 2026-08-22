@@ -16,16 +16,45 @@ import (
 // supplies, mirroring how qpdf and OCRmyPDF are treated: a missing or empty
 // directory degrades the font list instead of failing startup.
 
-const maxRegistryFonts = 64
+const maxRegistryFonts = 256
 
 var ErrFontUnknown = errors.New("font is not registered")
 
+// FontCategory groups faces so a long list stays navigable.
+type FontCategory string
+
+const (
+	CategorySans    FontCategory = "sans"
+	CategorySerif   FontCategory = "serif"
+	CategoryMono    FontCategory = "mono"
+	CategoryDisplay FontCategory = "display"
+	CategoryScript  FontCategory = "script"
+)
+
+// categoryOf reads the Panose family kind first, because that is the only
+// field that distinguishes a decorative or handwriting face from body text.
+func categoryOf(font *TrueTypeFont) FontCategory {
+	switch {
+	case font.FixedPitch:
+		return CategoryMono
+	case font.PanoseFamily == 3:
+		return CategoryScript
+	case font.PanoseFamily == 4:
+		return CategoryDisplay
+	case font.Serif:
+		return CategorySerif
+	default:
+		return CategorySans
+	}
+}
+
 type RegisteredFont struct {
-	ID     string `json:"id"`
-	Family string `json:"family"`
-	Serif  bool   `json:"serif"`
-	Fixed  bool   `json:"fixed"`
-	font   *TrueTypeFont
+	ID       string       `json:"id"`
+	Family   string       `json:"family"`
+	Serif    bool         `json:"serif"`
+	Fixed    bool         `json:"fixed"`
+	Category FontCategory `json:"category"`
+	font     *TrueTypeFont
 }
 
 // FontIssue records a file the registry deliberately refused, so /settings can
@@ -100,7 +129,7 @@ func LoadFontRegistry(directory string) *FontRegistry {
 			registry.issues = append(registry.issues, FontIssue{File: name, Reason: fmt.Sprintf("another font already registered the id %q", id)})
 			continue
 		}
-		entry := &RegisteredFont{ID: id, Family: font.PostScript, Serif: font.Serif, Fixed: font.FixedPitch, font: font}
+		entry := &RegisteredFont{ID: id, Family: font.PostScript, Serif: font.Serif, Fixed: font.FixedPitch, Category: categoryOf(font), font: font}
 		registry.byID[id] = entry
 		registry.order = append(registry.order, entry)
 	}
@@ -123,7 +152,7 @@ func (r *FontRegistry) Available() []RegisteredFont {
 	}
 	list := make([]RegisteredFont, 0, len(r.order))
 	for _, entry := range r.order {
-		list = append(list, RegisteredFont{ID: entry.ID, Family: entry.Family, Serif: entry.Serif, Fixed: entry.Fixed})
+		list = append(list, RegisteredFont{ID: entry.ID, Family: entry.Family, Serif: entry.Serif, Fixed: entry.Fixed, Category: entry.Category})
 	}
 	return list
 }

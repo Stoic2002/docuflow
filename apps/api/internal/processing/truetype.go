@@ -29,16 +29,20 @@ var (
 )
 
 type TrueTypeFont struct {
-	Data         []byte
-	PostScript   string
-	UnitsPerEm   float64
-	Ascent       float64
-	Descent      float64
-	CapHeight    float64
-	ItalicAngle  float64
-	BBox         [4]float64
-	FixedPitch   bool
-	Serif        bool
+	Data        []byte
+	PostScript  string
+	UnitsPerEm  float64
+	Ascent      float64
+	Descent     float64
+	CapHeight   float64
+	ItalicAngle float64
+	BBox        [4]float64
+	FixedPitch  bool
+	Serif       bool
+	// PanoseFamily is byte 0 of the OS/2 Panose block: 2 is Latin text,
+	// 3 hand written, 4 decorative. It separates a display or script face from
+	// an ordinary text face, which nothing else in the font reliably does.
+	PanoseFamily uint8
 	numGlyphs    int
 	advances     []uint16
 	runeToGlyph  map[rune]uint16
@@ -151,7 +155,33 @@ func ParseTrueType(data []byte) (*TrueTypeFont, error) {
 	if font.CapHeight == 0 {
 		font.CapHeight = font.Ascent
 	}
+	// The post table's isFixedPitch flag is unset in plenty of shipping fonts,
+	// so pitch is confirmed from the advances themselves, which cannot lie.
+	if measuredMonospace(font) {
+		font.FixedPitch = true
+	}
 	return font, nil
+}
+
+// measuredMonospace checks whether characters of wildly different shapes all
+// advance by the same amount.
+func measuredMonospace(font *TrueTypeFont) bool {
+	probes := []rune{'i', 'M', 'W', '.', 'l', '1', 'm'}
+	var reference float64
+	for _, probe := range probes {
+		advance := font.Advance(probe)
+		if advance == 0 {
+			return false
+		}
+		if reference == 0 {
+			reference = advance
+			continue
+		}
+		if math.Abs(advance-reference) > 0.5 {
+			return false
+		}
+	}
+	return reference > 0
 }
 
 func (f *TrueTypeFont) readHead(reader fontReader, table tableRecord) error {
@@ -369,6 +399,9 @@ func (f *TrueTypeFont) readOS2(reader fontReader, table tableRecord) {
 	// range, leaving 11 and above as the sans-serif styles.
 	family, familyErr := reader.u8(table.offset + 32)
 	serifStyle, serifErr := reader.u8(table.offset + 33)
+	if familyErr == nil {
+		f.PanoseFamily = family
+	}
 	if familyErr == nil && serifErr == nil {
 		f.Serif = family == 2 && serifStyle >= 2 && serifStyle <= 10
 	}

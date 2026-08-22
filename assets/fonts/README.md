@@ -5,32 +5,49 @@ menawarkannya lewat `GET /api/fonts`. Lokasinya bisa dipindah dengan `FONT_DIR`.
 
 ## Yang sudah tersedia
 
-| Keluarga | Gaya | Untuk apa |
+61 face dari 17 keluarga, dikelompokkan per keluarga di daftar font editor.
+
+### Pengganti font dokumen
+
+| Keluarga | Gaya | Menggantikan |
 | --- | --- | --- |
-| **Liberation Sans** | Regular, Bold, Italic, Bold Italic | Pengganti **Arial** dan Helvetica |
-| **Liberation Serif** | Regular, Bold, Italic, Bold Italic | Pengganti **Times New Roman** |
-| **Liberation Mono** | Regular, Bold, Italic, Bold Italic | Pengganti **Courier New** |
-| **Inter** | Regular, Bold, Italic | Sans modern untuk teks baru |
+| **Liberation Sans** | Regular, Bold, Italic, Bold Italic | Arial, Helvetica |
+| **Liberation Serif** | Regular, Bold, Italic, Bold Italic | Times New Roman |
+| **Liberation Mono** | Regular, Bold, Italic, Bold Italic | Courier New |
 
 Keluarga Liberation dipilih bukan karena selera, tetapi karena **metriknya
 kompatibel** dengan tiga font yang paling sering dipakai dokumen. Lebar tiap
-karakternya sama persis dengan Arial, Times New Roman, dan Courier New —
-sehingga teks pengganti pada alur cover & retype menempati ruang yang sama
-dengan teks aslinya, dan tata letak halaman tidak bergeser.
+karakternya sama persis, sehingga teks pengganti pada alur cover & retype
+menempati ruang yang sama dengan teks aslinya dan tata letak halaman tidak
+bergeser.
 
-Karena tiap keluarga lengkap dengan gaya tebal dan miringnya, tombol Tebal dan
-Miring di editor memakai font aslinya, bukan mensintesis efeknya.
+### Sans-serif
+
+Inter, Roboto, Open Sans, Lato, Poppins, Montserrat, Oswald, Bebas Neue.
+
+### Serif
+
+Merriweather, Lora, EB Garamond.
+
+### Monospace
+
+JetBrains Mono, Source Code Pro, Roboto Mono.
+
+### Script
+
+Pacifico, Great Vibes.
+
+Karena hampir semua keluarga lengkap dengan gaya tebal dan miringnya, tombol
+Tebal dan Miring di editor memakai font aslinya, bukan mensintesis efeknya.
 
 ## Lisensi
 
-Semuanya berlisensi **SIL Open Font License 1.1**, yang mengizinkan embedding ke
-dalam PDF dan redistribusi. Teks lisensinya wajib ikut didistribusikan dan
-tersimpan di sini:
+Semuanya berlisensi **SIL Open Font License 1.1**, kecuali Roboto yang
+**Apache License 2.0**. Keduanya mengizinkan embedding ke dalam PDF dan
+redistribusi.
 
-- `LICENSE-Liberation.txt`
-- `LICENSE-Inter.txt`
-
-Jangan menghapus kedua file itu.
+Teks lisensi tiap keluarga wajib ikut didistribusikan dan tersimpan lengkap di
+`LICENSES.md`. Jangan menghapus berkas itu.
 
 ## Menambah font sendiri
 
@@ -45,7 +62,10 @@ dibaca sekali saat start.
   macOS/Windows umumnya tidak boleh didistribusikan ulang — jangan disalin ke
   sini untuk deployment.
 - Beri nama file dengan pola keluarga dan gayanya, misalnya
-  `NamaFont-Bold.ttf`, supaya editor dapat mengenali pasangan tebal/miringnya.
+  `NamaFont-Bold.ttf`. Editor mengelompokkan daftar font berdasarkan nama
+  keluarga ini dan memakainya untuk mencari pasangan tebal/miringnya.
+- **Font variabel tidak cocok.** Yang ikut di-embed hanya instance bawaannya,
+  jadi semua ketebalan akan tampak sama. Pakai berkas statis per gaya.
 
 File yang ditolak tidak dibuang diam-diam; alasannya muncul di `GET /api/fonts`
 pada field `issues`.

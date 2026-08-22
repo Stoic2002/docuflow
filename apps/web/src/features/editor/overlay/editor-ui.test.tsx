@@ -5,7 +5,7 @@ import { useOverlayStore } from "./store";
 import { EditorToolbar } from "./toolbar";
 import type { BoxObject, TextObject } from "./types";
 
-const fonts = [{ id: "arialmt", family: "ArialMT", serif: false, fixed: false }];
+const fonts = [{ id: "arialmt", family: "ArialMT", serif: false, fixed: false, category: "sans" as const }];
 const state = () => useOverlayStore.getState();
 
 const box: BoxObject = {

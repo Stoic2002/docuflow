@@ -163,7 +163,20 @@ export type AnnotationImage = {
   rotation?: number;
 };
 
-export type RegisteredFont = { id: string; family: string; serif: boolean; fixed: boolean };
+export type FontCategory = "sans" | "serif" | "mono" | "display" | "script";
+
+/**
+ * `category` comes from the font's Panose metadata, which many families leave
+ * zeroed; treat it as a hint. `fixed` is measured from the advances and is
+ * reliable.
+ */
+export type RegisteredFont = {
+  id: string;
+  family: string;
+  serif: boolean;
+  fixed: boolean;
+  category: FontCategory;
+};
 
 /** A typeface the uploaded PDF already carries, as reported by pdffonts. */
 export type DocumentFont = { name: string; type: string; embedded: boolean; subset: boolean };

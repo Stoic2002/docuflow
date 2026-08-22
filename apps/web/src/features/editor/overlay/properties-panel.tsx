@@ -5,7 +5,7 @@ import {
   Bold, Copy, Italic, Strikethrough, Underline,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { effectiveStyle, toggleEmphasis } from "./font-variants";
+import { displayStyle, effectiveStyle, groupByFamily, toggleEmphasis } from "./font-variants";
 import { fontStack, overflowsCover } from "./geometry";
 import { useOverlayStore } from "./store";
 import { MAX_TEXT_LENGTH, type OverlayObject, isBox, isPath } from "./types";
@@ -119,8 +119,12 @@ export function PropertiesPanel({ fonts, fontsAvailable }: { fonts: RegisteredFo
             >
               <SelectInput aria-label="Font" value={selected.font} onChange={(event) => patch({ font: event.target.value })}>
                 <option value="">Helvetica bawaan</option>
-                {fonts.map((font) => (
-                  <option key={font.id} value={font.id}>{font.family}</option>
+                {groupByFamily(fonts).map((group) => (
+                  <optgroup key={group.name} label={group.name}>
+                    {group.faces.map((font) => (
+                      <option key={font.id} value={font.id}>{group.name} {displayStyle(font.family)}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </SelectInput>
             </Field>

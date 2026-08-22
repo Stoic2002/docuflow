@@ -95,9 +95,9 @@ describe("analyzeBackground", () => {
 
 describe("matchFont", () => {
   const fonts = [
-    { id: "arialmt", family: "ArialMT", serif: false, fixed: false },
-    { id: "georgia", family: "Georgia", serif: true, fixed: false },
-    { id: "couriernewpsmt", family: "CourierNewPSMT", serif: true, fixed: true },
+    { id: "arialmt", family: "ArialMT", serif: false, fixed: false, category: "sans" as const },
+    { id: "georgia", family: "Georgia", serif: true, fixed: false, category: "serif" as const },
+    { id: "couriernewpsmt", family: "CourierNewPSMT", serif: true, fixed: true, category: "mono" as const },
   ];
 
   it("prefers the same face the page already uses", () => {

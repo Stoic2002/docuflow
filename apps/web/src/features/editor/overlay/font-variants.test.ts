@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { effectiveStyle, resolveVariant, splitFamily, styleOf, toggleEmphasis } from "./font-variants";
+import { displayFamily, displayStyle, effectiveStyle, groupByFamily, resolveVariant, splitFamily, styleOf, toggleEmphasis } from "./font-variants";
 
 const liberation = [
-  { id: "liberationsans", family: "LiberationSans", serif: false, fixed: false },
-  { id: "liberationsans-bold", family: "LiberationSans-Bold", serif: false, fixed: false },
-  { id: "liberationsans-italic", family: "LiberationSans-Italic", serif: false, fixed: false },
-  { id: "liberationsans-bolditalic", family: "LiberationSans-BoldItalic", serif: false, fixed: false },
+  { id: "liberationsans", family: "LiberationSans", serif: false, fixed: false, category: "sans" as const },
+  { id: "liberationsans-bold", family: "LiberationSans-Bold", serif: false, fixed: false, category: "sans" as const },
+  { id: "liberationsans-italic", family: "LiberationSans-Italic", serif: false, fixed: false, category: "sans" as const },
+  { id: "liberationsans-bolditalic", family: "LiberationSans-BoldItalic", serif: false, fixed: false, category: "sans" as const },
 ];
-const lonely = [{ id: "solofont", family: "SoloFont", serif: false, fixed: false }];
+const lonely = [{ id: "solofont", family: "SoloFont", serif: false, fixed: false, category: "sans" as const }];
 
 describe("splitFamily", () => {
   it("separates the family stem from the style it declares", () => {
@@ -90,5 +90,44 @@ describe("effectiveStyle", () => {
 describe("styleOf", () => {
   it("returns no emphasis for an unknown id", () => {
     expect(styleOf("tidak-ada", liberation)).toEqual({ bold: false, italic: false });
+  });
+});
+
+describe("displayFamily and displayStyle", () => {
+  it("reads a camel-cased name as separate words", () => {
+    expect(displayFamily("LiberationSans-Bold")).toBe("Liberation Sans");
+    expect(displayFamily("EBGaramond-Italic")).toBe("EBGaramond");
+    expect(displayFamily("Inter-Regular")).toBe("Inter");
+  });
+
+  it("names each face within its family", () => {
+    expect(displayStyle("LiberationSans")).toBe("Regular");
+    expect(displayStyle("LiberationSans-Bold")).toBe("Bold");
+    expect(displayStyle("LiberationSans-Italic")).toBe("Italic");
+    expect(displayStyle("LiberationSans-BoldItalic")).toBe("Bold Italic");
+  });
+});
+
+describe("groupByFamily", () => {
+  const mixed = [
+    { id: "b", family: "Roboto-Bold", serif: false, fixed: false, category: "sans" as const },
+    { id: "a", family: "Roboto-Regular", serif: false, fixed: false, category: "sans" as const },
+    { id: "c", family: "Inter-Italic", serif: false, fixed: false, category: "sans" as const },
+    { id: "d", family: "Roboto-Italic", serif: false, fixed: false, category: "sans" as const },
+  ];
+
+  it("collects faces under one family, alphabetically by family", () => {
+    const groups = groupByFamily(mixed);
+    expect(groups.map((group) => group.name)).toEqual(["Inter", "Roboto"]);
+    expect(groups[1].faces).toHaveLength(3);
+  });
+
+  it("orders faces from regular through to bold italic", () => {
+    const [, roboto] = groupByFamily(mixed);
+    expect(roboto.faces.map((face) => face.id)).toEqual(["a", "d", "b"]);
+  });
+
+  it("returns nothing for an empty registry", () => {
+    expect(groupByFamily([])).toEqual([]);
   });
 });
