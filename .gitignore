@@ -22,3 +22,5 @@ data/temporary/*
 !data/outputs/.gitkeep
 !data/thumbnails/.gitkeep
 !data/temporary/.gitkeep
+
+assets/Fonts/*
