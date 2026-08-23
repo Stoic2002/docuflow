@@ -208,6 +208,85 @@ func (s *Server) permanentlyDeleteDocument(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type bulkDocumentsRequest struct {
+	DocumentIDs []string `json:"documentIds"`
+}
+
+func (s *Server) bulkDeleteDocuments(w http.ResponseWriter, r *http.Request) {
+	ids, ok := decodeBulkDocuments(w, r)
+	if !ok {
+		return
+	}
+	result, err := s.documents.DeleteMany(r.Context(), ids)
+	s.writeBulkResult(w, r, result, err)
+}
+
+func (s *Server) bulkPermanentlyDeleteDocuments(w http.ResponseWriter, r *http.Request) {
+	ids, ok := decodeBulkDocuments(w, r)
+	if !ok {
+		return
+	}
+	result, err := s.documents.PermanentDeleteMany(r.Context(), ids)
+	s.writeBulkResult(w, r, result, err)
+}
+
+func decodeBulkDocuments(w http.ResponseWriter, r *http.Request) ([]uuid.UUID, bool) {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var request bulkDocumentsRequest
+	if err := decoder.Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Request body is invalid", nil)
+		return nil, false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Request body must contain one JSON object", nil)
+		return nil, false
+	}
+	ids := make([]uuid.UUID, 0, len(request.DocumentIDs))
+	for _, value := range request.DocumentIDs {
+		id, err := uuid.Parse(value)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_DOCUMENT_ID", "Document ID is invalid", map[string]any{"documentId": value})
+			return nil, false
+		}
+		ids = append(ids, id)
+	}
+	return ids, true
+}
+
+// writeBulkResult always reports per document. A bulk delete that skips one
+// already-missing row still removed the rest, and the client has to be able to
+// say which is which.
+func (s *Server) writeBulkResult(w http.ResponseWriter, r *http.Request, result documents.BulkResult, err error) {
+	switch {
+	case errors.Is(err, documents.ErrNoDocumentsSelected):
+		writeError(w, http.StatusBadRequest, "NO_DOCUMENTS_SELECTED", "Select at least one document", nil)
+		return
+	case errors.Is(err, documents.ErrTooManyDocuments):
+		writeError(w, http.StatusUnprocessableEntity, "TOO_MANY_DOCUMENTS", "Select fewer documents and try again", map[string]any{"maxDocuments": documents.MaxBulkDocuments})
+		return
+	case err != nil:
+		s.writeDocumentError(w, r, err)
+		return
+	}
+	failed := make([]map[string]any, 0, len(result.Failures))
+	for _, failure := range result.Failures {
+		code, message := bulkFailureCode(failure.Reason)
+		if code == "DOCUMENT_OPERATION_FAILED" {
+			slog.ErrorContext(r.Context(), "bulk document operation failed", "documentId", failure.DocumentID, "error", failure.Reason)
+		}
+		failed = append(failed, map[string]any{"documentId": failure.DocumentID, "code": code, "message": message})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": result.Deleted, "failed": failed})
+}
+
+func bulkFailureCode(err error) (string, string) {
+	if errors.Is(err, documents.ErrNotFound) {
+		return "DOCUMENT_NOT_FOUND", "Document or version was not found"
+	}
+	return "DOCUMENT_OPERATION_FAILED", "The document request could not be completed"
+}
+
 func (s *Server) getDocumentContent(w http.ResponseWriter, r *http.Request) {
 	id, ok := documentID(w, r)
 	if !ok {

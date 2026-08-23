@@ -8,6 +8,8 @@ dist/
 coverage/
 playwright-report/
 test-results/
+.tanstack/
+apps/api/bin/
 
 # Generated at runtime. Keep directory placeholders below.
 data/originals/*

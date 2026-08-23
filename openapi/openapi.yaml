@@ -200,6 +200,29 @@ paths:
                 properties:
                   documents: { type: array, items: { $ref: "#/components/schemas/Document" } }
         default: { $ref: "#/components/responses/Error" }
+  /documents/bulk-delete:
+    post:
+      operationId: bulkDeleteDocuments
+      description: >-
+        Moves several documents to Trash in one call. Originals and versions stay
+        on disk. The response is itemised: a document that is already gone is
+        reported as a failure without affecting the rest of the selection.
+      requestBody: { $ref: "#/components/requestBodies/BulkDocuments" }
+      responses:
+        "200": { $ref: "#/components/responses/BulkDeleteResult" }
+        default: { $ref: "#/components/responses/Error" }
+  /documents/bulk-permanent-delete:
+    post:
+      operationId: bulkPermanentlyDeleteDocuments
+      description: >-
+        Permanently removes several documents already in Trash, including their
+        original and every version. Each document is staged and committed on its
+        own, so the ones reported as deleted are fully gone and the ones reported
+        as failed keep both their rows and their bytes. This cannot be undone.
+      requestBody: { $ref: "#/components/requestBodies/BulkDocuments" }
+      responses:
+        "200": { $ref: "#/components/responses/BulkDeleteResult" }
+        default: { $ref: "#/components/responses/Error" }
   /documents/{documentId}:
     parameters: [{ $ref: "#/components/parameters/DocumentId" }]
     get:
@@ -566,6 +589,20 @@ components:
       required: true
       schema: { type: string, format: uuid }
   requestBodies:
+    BulkDocuments:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [documentIds]
+            properties:
+              documentIds:
+                type: array
+                minItems: 1
+                maxItems: 200
+                items: { type: string, format: uuid }
+                description: Repeated identifiers are collapsed to a single removal.
     SingleDocument:
       required: true
       content:
@@ -621,7 +658,30 @@ components:
                 minItems: 1
                 items: { $ref: "#/components/schemas/DirectToolResult" }
               savedToRecent: { type: boolean }
+    BulkDeleteResult:
+      description: Per-document outcome for one bulk deletion
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/BulkDeleteResult" }
   schemas:
+    BulkDeleteResult:
+      type: object
+      required: [deleted, failed]
+      properties:
+        deleted:
+          type: array
+          items: { type: string, format: uuid }
+          description: Documents that were removed. Empty rather than null.
+        failed:
+          type: array
+          description: Documents left untouched, each with the reason. Empty rather than null.
+          items:
+            type: object
+            required: [documentId, code, message]
+            properties:
+              documentId: { type: string, format: uuid }
+              code: { type: string, example: DOCUMENT_NOT_FOUND }
+              message: { type: string }
     RegisteredFont:
       type: object
       required: [id, family, serif, fixed]

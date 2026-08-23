@@ -49,13 +49,6 @@ export type Capabilities = {
   convertImageToPdf: boolean;
 };
 
-export type Health = {
-  status: "ok" | "degraded";
-  database: "up" | "down";
-  storage: "up" | "down";
-  time: string;
-};
-
 export type DocumentRecord = {
   id: string;
   originalName: string;
@@ -187,6 +180,15 @@ export type DirectSplitResult = {
   savedToRecent: boolean;
 };
 
+/**
+ * Bulk deletion answers per document. One row that has already gone must not
+ * hide the documents that were removed, so both halves are always named.
+ */
+export type BulkDeleteResult = {
+  deleted: string[];
+  failed: Array<{ documentId: string; code: string; message: string }>;
+};
+
 export type ApiErrorBody = {
   error: { code: string; message: string; details: Record<string, unknown> };
 };
@@ -231,7 +233,6 @@ function multipart(files: File[], fields: Record<string, string> = {}): FormData
 }
 
 export const api = {
-  health: (signal?: AbortSignal) => request<Health>("/api/health", { signal }),
   capabilities: (signal?: AbortSignal) =>
     request<Capabilities>("/api/capabilities", { signal }),
   documents: (signal?: AbortSignal) =>
@@ -248,6 +249,20 @@ export const api = {
   deleteDocument: (id: string, signal?: AbortSignal) =>
     request<void>(`/api/documents/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      signal,
+    }),
+  bulkDeleteDocuments: (ids: string[], signal?: AbortSignal) =>
+    request<BulkDeleteResult>("/api/documents/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentIds: ids }),
+      signal,
+    }),
+  bulkPermanentlyDeleteDocuments: (ids: string[], signal?: AbortSignal) =>
+    request<BulkDeleteResult>("/api/documents/bulk-permanent-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentIds: ids }),
       signal,
     }),
   restoreDocument: (id: string, signal?: AbortSignal) =>

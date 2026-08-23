@@ -47,6 +47,8 @@ func New(cfg config.Config, pool *pgxpool.Pool, store *storage.Store, detector *
 		router.Get("/", server.listDocuments)
 		router.Post("/", server.uploadDocument)
 		router.Get("/trash", server.listTrash)
+		router.Post("/bulk-delete", server.bulkDeleteDocuments)
+		router.Post("/bulk-permanent-delete", server.bulkPermanentlyDeleteDocuments)
 		router.Route("/{documentId}", func(router chi.Router) {
 			router.Get("/", server.getDocument)
 			router.Patch("/", server.renameDocument)

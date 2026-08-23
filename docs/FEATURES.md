@@ -10,26 +10,47 @@ Dokumen ini menjelaskan fitur yang tersedia pada vertical slice lokal Docuflow, 
 | Bergantung capability | Implementasi tersedia, tetapi hanya aktif jika executable atau service yang dibutuhkan terdeteksi backend. |
 | Preview | Dapat membuka dan melihat PDF, tetapi tidak mengubah konten native. |
 | Mockup | Tampilan tersedia untuk memvalidasi alur UX; belum memproses file. |
-| Lanjutan | Fondasi backend tersedia, tetapi alur UI publik belum lengkap. |
+
+## Dua pola masuk yang berlaku sekarang
+
+Ini perlu dibaca lebih dulu, karena tidak semua tool dimulai dengan cara yang sama.
+
+**Mulai dari upload langsung** — halaman menampilkan dropzone, dan tombol aksi tetap disabled sampai file masuk:
+
+`/edit`, `/merge`, `/split`, `/compress`, `/ocr`, `/convert`
+
+**Mulai dari memilih dokumen yang sudah ada** — halaman menampilkan dropdown "Choose a recent PDF" yang diisi dari Recent Files:
+
+`/protect`, `/unlock`, `/watermark`, `/page-numbers`, `/header-footer`, `/metadata`, dan Organize di `/documents/{documentId}/organize`
+
+Pola kedua **belum sesuai** dengan aturan produk "semua tool dimulai dari upload langsung". Enam halaman tersebut dan Organize masih mengharuskan dokumen sudah ada di Recent Files lebih dulu, dan kartu "Organize PDF" di All Tools mengarah ke `/recent`, bukan ke halaman upload. Menyeragamkannya menjadi upload-first masih pekerjaan terbuka; sampai itu selesai, dokumen ini menjelaskan keadaan sebenarnya, bukan keadaan yang diinginkan.
 
 ## Ringkasan fitur
 
-| Fitur | Route utama | Status | Dependency |
-| --- | --- | --- | --- |
-| Dashboard | `/` | Tersedia | API, PostgreSQL, storage lokal |
-| Edit PDF (overlay editor) | `/edit` | Bergantung capability | PDF.js, qpdf, pdfinfo |
-| Ganti teks asli (cover & retype) | `/edit` | Bergantung capability | PDF.js, qpdf, pdfinfo |
-| Edit teks asli secara native | `/edit` | Belum tersedia | Memerlukan SDK komersial |
-| Merge PDF | `/merge` | Bergantung capability | qpdf |
-| Split PDF | `/split` | Bergantung capability | qpdf |
-| Compress PDF | `/compress` | Bergantung capability | qpdf |
-| Convert JPG → PDF | `/convert` | Tersedia | API, PostgreSQL, storage lokal |
-| Format Convert lainnya | `/convert` | Mockup | Engine terkait belum dipilih |
-| Searchable OCR | `/ocr` | Bergantung capability | OCRmyPDF dan language pack |
-| Recent Files | `/recent` | Tersedia | API, PostgreSQL, storage lokal |
-| Trash | `/trash` | Tersedia | API, PostgreSQL, storage lokal |
-| All Tools | `/all-tools` | Tersedia | Mengikuti capability setiap tool |
-| Settings/status | `/settings` | Tersedia | Endpoint capabilities |
+| Fitur | Route utama | Masuk lewat | Status | Dependency |
+| --- | --- | --- | --- | --- |
+| Dashboard | `/` | — | Tersedia | API, PostgreSQL, storage lokal |
+| All Tools | `/all-tools` | — | Tersedia | Mengikuti capability setiap tool |
+| Settings/status | `/settings` | — | Tersedia | Endpoint capabilities |
+| Edit PDF (overlay editor) | `/edit` | Upload | Bergantung capability | PDF.js, qpdf, pdfinfo |
+| Ganti teks asli (cover & retype) | `/edit` | Upload | Bergantung capability | PDF.js, qpdf, pdfinfo |
+| Edit teks asli secara native | `/edit` | — | Belum tersedia | Memerlukan SDK komersial |
+| Merge PDF | `/merge` | Upload | Bergantung capability | qpdf |
+| Split PDF | `/split` | Upload | Bergantung capability | qpdf |
+| Compress PDF | `/compress` | Upload | Bergantung capability | qpdf |
+| Searchable OCR | `/ocr` | Upload | Bergantung capability | OCRmyPDF dan language pack |
+| Convert JPG → PDF | `/convert` | Upload | Tersedia | API, PostgreSQL, storage lokal |
+| Arah konversi lainnya | `/convert` | — | Mockup | Engine terkait belum dipilih |
+| Watermark | `/watermark` | Pilih dokumen | Bergantung capability | qpdf, pdfinfo |
+| Page Numbers | `/page-numbers` | Pilih dokumen | Bergantung capability | qpdf, pdfinfo |
+| Header & Footer | `/header-footer` | Pilih dokumen | Bergantung capability | qpdf, pdfinfo |
+| PDF Metadata | `/metadata` | Pilih dokumen | Bergantung capability | qpdf |
+| Protect PDF | `/protect` | Pilih dokumen | Bergantung capability | qpdf |
+| Unlock PDF | `/unlock` | Pilih dokumen | Bergantung capability | qpdf |
+| Organize halaman | `/documents/{documentId}/organize` | Pilih dokumen | Bergantung capability | qpdf, pdftoppm |
+| Detail dan riwayat versi | `/documents/{documentId}` | Pilih dokumen | Tersedia | API, PostgreSQL, storage lokal |
+| Recent Files | `/recent` | — | Tersedia | API, PostgreSQL, storage lokal |
+| Trash | `/trash` | — | Tersedia | API, PostgreSQL, storage lokal |
 
 ## Upload dan penyimpanan
 
@@ -43,7 +64,7 @@ Dokumen ini menjelaskan fitur yang tersedia pada vertical slice lokal Docuflow, 
 
 ## Edit PDF dan Preview
 
-Alur `/edit` menerima satu PDF lalu membuka workspace Preview. Fallback berbasis PDF.js menyediakan:
+Alur `/edit` menerima satu PDF lewat upload langsung, lalu membuka workspace Preview. Fallback berbasis PDF.js menyediakan:
 
 - tampilan PDF di browser;
 - jumlah halaman;
@@ -57,7 +78,7 @@ Yang sudah tersedia tanpa SDK komersial adalah **overlay editing** — menambahk
 
 ## Overlay editor
 
-`/edit` menerima satu PDF lewat upload langsung, lalu membuka kanvas editor. Objek yang ditambahkan diratakan ke atas halaman oleh backend dan disimpan sebagai versi baru lewat `POST /api/edit-sessions/{sessionId}/export`.
+Objek yang ditambahkan diratakan ke atas halaman oleh backend dan disimpan sebagai versi baru lewat `POST /api/edit-sessions/{sessionId}/export`.
 
 Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atasnya. Tersedia:
 
@@ -70,12 +91,14 @@ Kanvas menampilkan halaman yang dirender PDF.js dengan lapisan objek SVG di atas
 - undo/redo, hapus objek terpilih, navigasi halaman, dan zoom;
 - pintasan papan tik: `Delete` menghapus objek terpilih, `Ctrl/Cmd+Z` urungkan, `Ctrl/Cmd+Shift+Z` ulangi;
 - zoom dengan cubit dua jari di trackpad atau `Ctrl` + scroll, yang memperbesar ke titik kursor; usap dua jari biasa tetap menggulung halaman;
-- editor memakai seluruh viewport: navigasi utama aplikasi disembunyikan dan kanvas mengisi tepi ke tepi, dengan panel properti mengambang di atasnya.
+- editor memakai seluruh viewport: navigasi utama aplikasi disembunyikan dan kanvas mengisi tepi ke tepi, dengan panel properti mengambang di atasnya;
 - warna diisi lewat pemilih warna maupun kode hex, dan ukuran teks dipilih dari daftar ukuran umum;
-- teks bisa ditebalkan, dimiringkan, digarisbawahi, dan dicoret. Semuanya **disintesis** engine, bukan menukar font: tebal memakai mode render isi-plus-goresan, miring memiringkan matriks teks, sedangkan garis bawah dan coret digambar selebar teks menurut metrik fontnya sehingga tetap benar pada teks rata kanan maupun miring. Kalau file font bold atau italic sungguhan tersedia di `assets/fonts/`, memilihnya dari daftar Font memberi hasil yang lebih baik;
+- teks bisa ditebalkan, dimiringkan, digarisbawahi, dan dicoret. Kalau keluarga font yang dipilih menyediakan file bold atau italic sungguhan, gaya itulah yang dipakai; kalau tidak, efeknya **disintesis** engine — tebal memakai mode render isi-plus-goresan, miring memiringkan matriks teks, sedangkan garis bawah dan coret digambar selebar teks menurut metrik fontnya sehingga tetap benar pada teks rata kanan maupun miring;
 - **Stabilo** menandai teks atau garis yang sudah ada dengan blok transparan yang mengikuti bentuknya persis;
 - **Panah** menggambar garis bermata panah yang ukurannya mengikuti ketebalan garis;
 - objek bisa diduplikat, dibawa ke depan, atau dikirim ke belakang — yang terakhir berguna untuk memastikan penutup teks berada di bawah teks penggantinya.
+
+Halaman aktif dan tingkat zoom disimpan di store editor yang sama dengan objek overlay, dan keduanya kembali ke nilai awal saat sesi ditutup.
 
 Pratinjau di kanvas memakai font yang terpasang di browser, sedangkan hasil PDF memakai font yang di-embed backend. Untuk font yang tidak dimiliki browser, proporsinya bisa sedikit berbeda di layar; hasil akhirnya yang menentukan.
 
@@ -96,8 +119,6 @@ Teks itu kemudian tinggal diedit di panel Properti. Penutup dan teks penggantiny
 - **Ini bukan redaksi yang aman.** Teks lama tetap ada di dalam file dan masih terbaca oleh ekstraktor teks seperti `pdftotext`; ia hanya tertutup secara visual. Untuk menghapus informasi sensitif secara permanen, cara ini tidak boleh dipakai.
 - Halaman hasil scan tidak punya teks yang bisa dipilih. Jalankan Searchable OCR lebih dulu.
 - Teks pengganti tidak mengalir ulang. Kalau teks baru lebih panjang, ia akan melewati batas teks lama.
-
-Teks penggantinya langsung terpilih dan bisa digeser saat itu juga, diedit isinya di panel Properti, atau diubah langsung di kanvas dengan klik dua kali.
 
 Untuk mengubah teks berikut reflow paragrafnya, tetap dibutuhkan SDK komersial.
 
@@ -137,7 +158,11 @@ Original tidak pernah ditimpa; hasilnya selalu menjadi versi baru.
 
 `GET /api/fonts` menampilkan font TrueType yang dapat di-embed. Backend memindai direktori `FONT_DIR` (default `assets/fonts`) saat start.
 
-Repo ini sudah menyertakan 15 font berlisensi SIL OFL 1.1: **Liberation Sans, Serif, dan Mono** lengkap dengan gaya tebal dan miringnya, ditambah **Inter** Regular/Bold/Italic. Keluarga Liberation dipilih karena metriknya kompatibel dengan Arial, Times New Roman, dan Courier New — lebar tiap karakternya sama persis, sehingga teks pengganti pada alur cover & retype menempati ruang yang sama dengan teks aslinya dan tata letak halaman tidak bergeser.
+Repo ini menyertakan **61 file `.ttf` berlisensi SIL OFL 1.1 atau Apache 2.0**, mencakup keluarga sans, serif, monospace, display, dan script:
+
+Bebas Neue, EB Garamond, Great Vibes, Inter, JetBrains Mono, Lato, Liberation Mono, Liberation Sans, Liberation Serif, Lora, Merriweather, Montserrat, Open Sans, Oswald, Pacifico, Poppins, Roboto, Roboto Mono, Source Code Pro.
+
+Sebagian besar keluarga disertakan lengkap dengan gaya tebal, miring, dan tebal-miringnya. Keluarga Liberation penting secara khusus karena metriknya kompatibel dengan Arial, Times New Roman, dan Courier New — lebar tiap karakternya sama persis, sehingga teks pengganti pada alur cover & retype menempati ruang yang sama dengan teks aslinya dan tata letak halaman tidak bergeser.
 
 - Hanya `.ttf` berbasis `glyf`; `.ttc` dan `.otf` CFF ditolak.
 - Bit `fsType` pada tabel OS/2 dibaca, dan font yang vendornya melarang embedding ditolak. Ini membaca niat vendor, bukan pengganti membaca lisensinya.
@@ -145,8 +170,6 @@ Repo ini sudah menyertakan 15 font berlisensi SIL OFL 1.1: **Liberation Sans, Se
 - Hanya glyph yang dipakai yang ikut di-embed. Halaman uji berisi enam font turun dari 3,2 MB menjadi 194 KB.
 - Direktori kosong bukan error. Editor tetap jalan dengan Helvetica bawaan PDF, yang tidak perlu di-embed tetapi hanya mencakup Latin-1.
 - File yang ditolak dilaporkan pada field `issues`, bukan dibuang diam-diam.
-
-Karena keluarga bawaan lengkap dengan gaya tebal dan miringnya, tombol Tebal dan Miring di editor **memakai font aslinya** dan hanya mensintesis efek bila keluarga font yang dipilih tidak menyediakannya.
 
 Belum didukung: shaping untuk aksara yang membutuhkannya seperti Arab, Thai, dan Devanagari. Latin dan Bahasa Indonesia sudah benar.
 
@@ -160,7 +183,7 @@ Font yang bertanda **belum ada** tidak bisa dipakai untuk teks pengganti; Docufl
 
 Merge tersedia di `/merge` ketika qpdf terdeteksi oleh proses Go API.
 
-- menerima 2 sampai 20 file PDF;
+- menerima 2 sampai 20 file PDF lewat upload langsung;
 - urutan file dapat diubah dengan drag-and-drop;
 - menghasilkan satu PDF baru;
 - hasil dapat diunduh dan tercatat sebagai versi;
@@ -173,9 +196,9 @@ Pemrosesan menggunakan `exec.CommandContext` dengan daftar argumen eksplisit. Ba
 Split tersedia di `/split` ketika qpdf terdeteksi.
 
 - menerima tepat satu PDF sebagai input;
-- menampilkan pemilih halaman visual, bukan input rentang teks;
+- menampilkan pemilih halaman visual berbasis thumbnail, bukan input rentang teks;
 - seluruh halaman dipilih secara default setelah PDF selesai dianalisis;
-- pengguna dapat memilih satu atau banyak halaman;
+- pengguna dapat membatalkan pilihan halaman mana pun;
 - setiap halaman terpilih menghasilkan satu file PDF mandiri;
 - setiap output memiliki tombol download tersendiri;
 - tombol proses dinonaktifkan sampai PDF dan minimal satu halaman tersedia.
@@ -192,30 +215,28 @@ Compress tersedia di `/compress` ketika qpdf terdeteksi. Implementasi saat ini h
 - bila hasil tidak lebih kecil, temporary output dibuang dan API mengembalikan `COMPRESSION_NOT_SMALLER`;
 - tombol proses dinonaktifkan sebelum satu PDF diunggah.
 
-Pengembangan lebih lanjut untuk fitur ini sedang ditunda sesuai prioritas produk saat ini.
-
-Tiga tingkat kompresi yang direncanakan tidak akan dipalsukan dengan mengganti angka `--compression-level` qpdf saja. Rancangan yang disarankan:
+**Tiga tingkat kompresi (rendah/sedang/tinggi) belum ada — tidak di UI maupun di API.** Halaman `/compress` hanya menyediakan satu mode lossless. Tiga tingkat itu tidak akan dipalsukan dengan mengganti angka `--compression-level` qpdf saja. Rancangan yang disarankan:
 
 - **Rendah/Ringan:** structural lossless dengan qpdf; kualitas gambar tidak diubah.
 - **Sedang/Seimbang:** optimasi gambar moderat dan structural pass.
 - **Tinggi/Maksimal:** downsampling gambar lebih agresif dengan konsekuensi kualitas visual.
 
-Mode Sedang dan Tinggi memerlukan engine pemrosesan gambar PDF tambahan, misalnya Ghostscript atau SDK PDF yang dipilih. Ghostscript sekarang tersedia pada mesin verifikasi lokal melalui dependency OCRmyPDF, tetapi kontrak mode, argumen aman, metrik kualitas, dan UI tiga tingkat belum diimplementasikan. Keduanya tetap unavailable sampai implementasi tersebut selesai dan outputnya diuji; qpdf sendiri tidak cukup untuk membuat tiga tier yang bermakna.
+Mode Sedang dan Tinggi memerlukan engine pemrosesan gambar PDF tambahan, misalnya Ghostscript atau SDK PDF yang dipilih. Ghostscript tersedia pada mesin verifikasi lokal melalui dependency OCRmyPDF, tetapi kontrak mode, argumen aman, metrik kualitas, dan UI tiga tingkat belum diimplementasikan.
 
 ## Searchable OCR
 
 OCR tersedia di `/ocr` ketika OCRmyPDF dan language pack yang diperlukan terdeteksi.
 
-- menerima satu PDF;
+- menerima satu PDF lewat upload langsung;
 - bahasa yang diizinkan saat ini: English (`eng`) dan Bahasa Indonesia (`ind`);
 - menghasilkan PDF dengan text layer yang dapat dicari atau diseleksi;
 - tombol proses dinonaktifkan ketika OCRmyPDF tidak tersedia atau file belum diunggah.
 
-Searchable OCR tidak merekonstruksi layout menjadi dokumen yang sepenuhnya editable. Pada mesin verifikasi lokal, OCRmyPDF 17.10.0, Tesseract 5.5.3, serta model `eng` dan `ind` sudah tersedia. Alur API telah diverifikasi dengan fixture image-only: input tidak memiliki text layer, output valid menurut qpdf, teks uji dapat diekstrak, dan checksum download cocok dengan metadata versi.
+Searchable OCR tidak merekonstruksi layout menjadi dokumen yang sepenuhnya editable.
 
 ## Convert
 
-Halaman `/convert` sekarang memiliki vertical slice JPG/JPEG → PDF yang aktif:
+Halaman `/convert` memiliki vertical slice JPG/JPEG → PDF yang aktif:
 
 - menerima satu sampai 20 JPG/JPEG;
 - urutan drag-and-drop menjadi urutan halaman;
@@ -227,34 +248,63 @@ Halaman `/convert` sekarang memiliki vertical slice JPG/JPEG → PDF yang aktif:
 - PDF hasil disimpan immutable, masuk Recent Files, dan dapat diunduh;
 - orientasi EXIF belum diterapkan pada slice pertama ini.
 
-Sembilan arah konversi lain masih berupa mockup UX. Kartu dan tombol aksinya sengaja dinonaktifkan karena engine terkait belum dipilih dan diverifikasi di backend Go.
-
-Format yang ditampilkan:
-
-- JPG ke PDF — **aktif**;
-- Word ke PDF;
-- PowerPoint ke PDF;
-- Excel ke PDF;
-- HTML ke PDF;
-- PDF ke JPG;
-- PDF ke Word;
-- PDF ke PowerPoint;
-- PDF ke Excel;
-- PDF ke HTML.
+Sembilan arah konversi lain masih berupa mockup UX dengan kartu dan tombol yang sengaja dinonaktifkan: Word/PowerPoint/Excel/HTML → PDF, dan PDF → JPG/Word/PowerPoint/Excel/HTML.
 
 PDF → JPG memungkinkan sebagai tahap berikutnya menggunakan Poppler yang sudah tersedia pada mesin verifikasi lokal. Office → PDF memerlukan LibreOffice yang benar-benar menjadi dependency deployment; HTML → PDF memerlukan renderer headless. PDF → Word/PowerPoint/Excel/HTML memerlukan engine yang dapat menjaga fidelity dan belum akan disimulasikan.
 
+## Watermark, Page Numbers, Header & Footer
+
+Ketiganya memakai jalur overlay yang sama di backend dan aktif ketika qpdf **dan** pdfinfo terdeteksi. Semuanya masih dimulai dengan memilih dokumen dari Recent Files.
+
+- **Watermark** (`/watermark`) — teks dengan preset umum, atau logo JPEG. Opacity, rotasi, skala, penempatan horizontal/vertikal, dan rentang halaman dapat diatur, dengan pratinjau representatif di sisi kanan.
+- **Page Numbers** (`/page-numbers`) — enam preset penempatan, nomor awal, prefix, suffix, opsi menyertakan total halaman, lewati halaman pertama, dan rentang halaman.
+- **Header & Footer** (`/header-footer`) — tiga kolom (kiri, tengah, kanan) untuk header dan footer secara terpisah, dengan variabel `{page}`, `{pages}`, `{filename}`, dan `{date}`.
+
+## PDF Metadata
+
+`/metadata` membaca judul, penulis, subject, dan keywords yang tertanam, lalu menyimpannya kembali sebagai versi baru. Panel kanan menampilkan jumlah halaman, ukuran file, dan waktu modifikasi. Field yang dikosongkan akan dihapus dari dokumen.
+
+## Protect dan Unlock
+
+- **Protect** (`/protect`) — memasang password buka dengan enkripsi AES-256 dan mengatur izin pembaca (printing, copying, modification, annotation, form filling, assembly). Izin pembaca adalah petunjuk kebijakan, bukan jaminan terhadap segala bentuk ekstraksi konten. Konfirmasi password wajib cocok sebelum tombol aktif.
+- **Unlock** (`/unlock`) — melepas enkripsi hanya bila password yang benar diberikan.
+
+Dokumen yang mengandung tanda tangan digital memicu peringatan, dan tombol proses tetap disabled sampai pengguna mencentang konfirmasi bahwa modifikasi dapat membatalkan tanda tangan tersebut. Ini berlaku untuk seluruh tool pada kelompok ini.
+
+## Organize halaman
+
+`/documents/{documentId}/organize` menampilkan thumbnail halaman dan mendukung:
+
+- seleksi halaman;
+- reorder lewat drag-and-drop, lalu disimpan sebagai satu operasi;
+- rotate;
+- delete pages;
+- duplicate pages;
+- extract menjadi dokumen baru;
+- insert PDF lain;
+- insert halaman kosong.
+
+Thumbnail memerlukan `pdftoppm`; operasi halamannya memerlukan qpdf.
+
 ## Recent Files
 
-Halaman `/recent` menampilkan dokumen yang tersimpan menggunakan TanStack Table.
+Halaman `/recent` menampilkan dokumen yang tersimpan menggunakan TanStack Table:
 
 - membuka detail/Preview;
 - mengunduh original atau versi;
+- rename display name;
 - melihat metadata dan riwayat versi;
 - memindahkan dokumen ke Trash melalui dialog konfirmasi reusable yang tampil sebagai modal terpusat;
+- **menghapus banyak dokumen sekaligus** — lihat di bawah;
 - menampilkan loading, empty, dan actionable error state.
 
 Delete dari Recent Files adalah soft delete. File original dan versi belum dihapus pada tahap ini sehingga dokumen masih dapat dipulihkan.
+
+### Bulk delete
+
+Setiap baris punya checkbox, dan checkbox di kepala tabel memilih atau membatalkan seluruh baris sekaligus dengan status setengah-terpilih bila hanya sebagian yang dipilih. Begitu ada yang terpilih, sebuah bar muncul di atas tabel dengan jumlah dokumen terpilih, tombol Batalkan pilihan, dan tombol hapus yang menyebut jumlahnya. Konfirmasi tetap melewati dialog reusable yang sama.
+
+Seleksi dikunci pada ID dokumen, sehingga refetch yang mengubah urutan baris tidak memindahkan pilihan ke dokumen lain.
 
 ## Trash
 
@@ -262,6 +312,7 @@ Halaman `/trash` menangani dokumen yang sudah dihapus dari Recent Files.
 
 - Restore mengembalikan dokumen ke Recent Files;
 - Delete permanently memerlukan konfirmasi terpisah;
+- **hapus permanen banyak dokumen sekaligus** lewat checkbox per kartu dan checkbox Pilih semua, dengan dialog konfirmasi yang menyebut jumlahnya;
 - permanent delete hanya menerima record yang sudah berstatus deleted;
 - seluruh path file diambil dari database, diselesaikan melalui safe path resolver, dan tidak berasal dari absolute path request;
 - file original/versi dipindahkan lebih dulu ke area temporary;
@@ -269,33 +320,38 @@ Halaman `/trash` menangani dokumen yang sudah dihapus dari Recent Files.
 - kegagalan transaksi mengembalikan file yang sudah di-stage;
 - setelah commit berhasil, byte yang di-stage dihapus permanen.
 
+### Semantik bulk delete
+
+Kedua endpoint bulk memproses dokumen **satu per satu** dan selalu menjawab per dokumen:
+
+```json
+{ "deleted": ["<uuid>"], "failed": [{ "documentId": "<uuid>", "code": "DOCUMENT_NOT_FOUND", "message": "…" }] }
+```
+
+- Satu dokumen yang gagal tidak membatalkan sisanya. Ini disengaja: dokumen yang sudah hilang tidak boleh menggagalkan 19 dokumen lain yang valid.
+- Untuk hapus permanen, setiap dokumen tetap di-stage dan di-commit sendiri-sendiri. Dokumen yang dilaporkan `deleted` benar-benar hilang beserta byte-nya; dokumen yang dilaporkan `failed` masih utuh, baik row maupun file-nya.
+- ID yang diulang di dalam satu permintaan hanya diproses sekali.
+- Maksimal 200 dokumen per permintaan; lebih dari itu ditolak dengan `TOO_MANY_DOCUMENTS`, dan daftar kosong ditolak dengan `NO_DOCUMENTS_SELECTED`.
+- Permintaan yang diputus di tengah jalan berhenti pada dokumen berikutnya; yang sudah ter-commit tetap terhapus.
+- UI menyebutkan **nama** dokumen yang gagal, bukan hanya jumlahnya.
+
+Bulk restore di Trash belum ada; pemulihan masih satu per satu.
+
 ## Detail, versi, dan page operations
 
-Detail dokumen tersedia di `/documents/$documentId`. Riwayat versi dan content endpoint mendukung download dengan HTTP range.
+Detail dokumen tersedia di `/documents/{documentId}`. Riwayat versi dan content endpoint mendukung download dengan HTTP range.
 
-Backend juga memiliki operasi qpdf untuk:
-
-- extract page range;
-- rotate;
-- reorder;
-- delete pages.
-
-UI organize berbasis dokumen tersedia di `/documents/$documentId/organize` untuk reorder halaman. Tool-first public flow untuk rotate dan delete pages masih merupakan pekerjaan lanjutan dan tidak dianggap selesai hanya karena endpoint backend sudah ada.
+Rotate, reorder, delete pages, duplicate, extract, dan insert tersedia lewat UI Organize di atas. Alur tool-first publik untuk rotate dan delete pages — yaitu halaman sendiri yang dimulai dari upload — masih pekerjaan lanjutan dan tidak dianggap selesai hanya karena endpoint backend sudah ada.
 
 ## Capability dan perilaku disabled
 
-`/settings` dan dashboard membaca status runtime dari `/api/capabilities`, termasuk:
+`/settings` dan dashboard membaca status runtime dari `/api/capabilities`, termasuk koneksi PostgreSQL, storage lokal, qpdf, OCRmyPDF, pdfinfo, pdftoppm, pdffonts beserta versinya atau alasan ketidaktersediaannya, serta flag per fitur.
 
-- koneksi PostgreSQL;
-- storage lokal;
-- qpdf dan versinya;
-- OCRmyPDF dan alasannya bila tidak tersedia;
-- native content editing;
-- merge, split, compression, OCR, dan conversion.
+Pada halaman tool, area upload dan tombol proses mengikuti status capability. Tombol juga tetap disabled sampai jumlah file atau pilihan halaman memenuhi syarat, dengan teks bantuan yang menjelaskan langkah berikutnya. Kartu di All Tools menampilkan lencana Available/Unavailable per tool.
 
-Pada halaman tool, area upload dan tombol proses mengikuti status capability. Tombol juga tetap disabled sampai jumlah file atau pilihan halaman memenuhi syarat, dengan teks bantuan yang menjelaskan langkah berikutnya.
+Pesan "Capability unavailable — qpdf is not installed or is not on PATH" berarti dependency sistem belum terpasang di mesin, bukan bug aplikasi. qpdf dan OCRmyPDF harus ikut disediakan di environment deployment.
 
-Status mesin verifikasi terakhir:
+Snapshot mesin verifikasi lokal terakhir:
 
 - qpdf `12.4.0`: tersedia;
 - OCRmyPDF 17.10.0 dan Tesseract 5.5.3: tersedia dengan bahasa `eng` dan `ind`;
@@ -305,28 +361,43 @@ Status mesin verifikasi terakhir:
 
 ## Endpoint utama
 
+Kontrak lengkapnya ada di `openapi/openapi.yaml`.
+
 | Method | Endpoint | Fungsi |
 | --- | --- | --- |
 | `GET` | `/api/health` | Status API, database, dan storage |
 | `GET` | `/api/capabilities` | Status dependency dan fitur runtime |
+| `GET` | `/api/fonts` | Font yang dapat di-embed dan file yang ditolak |
+| `POST` | `/api/edit-sessions` | Membuat sesi Preview dari upload langsung |
+| `GET` | `/api/edit-sessions/{sessionId}` | Detail sesi Preview |
+| `POST` | `/api/edit-sessions/{sessionId}/export` | Meratakan dokumen overlay editor menjadi versi baru |
 | `GET` / `POST` | `/api/documents` | List dan upload dokumen |
-| `GET` / `DELETE` | `/api/documents/{documentId}` | Detail dan soft delete |
+| `GET` | `/api/documents/trash` | List Trash |
+| `POST` | `/api/documents/bulk-delete` | Soft delete banyak dokumen sekaligus |
+| `POST` | `/api/documents/bulk-permanent-delete` | Hapus permanen banyak dokumen sekaligus |
+| `GET` / `PATCH` / `DELETE` | `/api/documents/{documentId}` | Detail, rename, dan soft delete |
+| `POST` | `/api/documents/{documentId}/restore` | Restore soft-deleted document |
+| `DELETE` | `/api/documents/{documentId}/permanent` | Permanent delete yang terkonfirmasi |
 | `GET` | `/api/documents/{documentId}/content` | Download original |
 | `GET` | `/api/documents/{documentId}/versions` | Riwayat versi |
 | `GET` | `/api/documents/{documentId}/versions/{versionId}/content` | Download versi |
-| `GET` | `/api/documents/trash` | List Trash |
-| `POST` | `/api/documents/{documentId}/restore` | Restore soft-deleted document |
-| `DELETE` | `/api/documents/{documentId}/permanent` | Permanent delete yang terkonfirmasi |
-| `GET` | `/api/fonts` | Font yang dapat di-embed dan file yang ditolak |
 | `GET` | `/api/documents/{documentId}/fonts` | Font yang sudah dipakai di dalam dokumen |
-| `POST` | `/api/edit-sessions` | Membuat sesi Preview dari upload langsung |
-| `POST` | `/api/edit-sessions/{sessionId}/export` | Meratakan dokumen overlay editor menjadi versi baru |
+| `GET` / `PATCH` | `/api/documents/{documentId}/metadata` | Baca dan ubah metadata tertanam |
+| `GET` | `/api/documents/{documentId}/pages/{page}/thumbnail` | Thumbnail satu halaman |
 | `POST` | `/api/tools/merge` | Merge PDF |
 | `POST` | `/api/tools/split` | Split menjadi multi-output |
 | `POST` | `/api/tools/extract` | Extract page range |
 | `POST` | `/api/tools/rotate` | Rotate halaman |
 | `POST` | `/api/tools/reorder` | Reorder halaman |
 | `POST` | `/api/tools/delete-pages` | Delete halaman |
+| `POST` | `/api/tools/duplicate-pages` | Duplicate halaman |
+| `POST` | `/api/tools/insert-pages` | Sisipkan halaman dari PDF lain |
+| `POST` | `/api/tools/insert-blank-page` | Sisipkan halaman kosong |
+| `POST` | `/api/tools/protect` | Enkripsi AES-256 dan izin pembaca |
+| `POST` | `/api/tools/unlock` | Lepas enkripsi dengan password yang benar |
+| `POST` | `/api/tools/watermark` | Watermark teks atau JPEG |
+| `POST` | `/api/tools/page-numbers` | Nomor halaman |
+| `POST` | `/api/tools/header-footer` | Header dan footer |
 | `POST` | `/api/tools/compress` | Structural/lossless compression |
 | `POST` | `/api/tools/ocr` | Searchable OCR |
 | `POST` | `/api/tools/convert/jpg-to-pdf` | Satu hingga 20 JPG menjadi satu PDF |
@@ -356,11 +427,10 @@ Format error API konsisten:
 
 ## Keputusan dan pekerjaan lanjutan
 
-- Membangun kanvas interaktif untuk overlay editor; kontrak API-nya sudah siap.
-- Menyediakan font berlisensi OFL/Apache di `assets/fonts` untuk deployment.
+- Menyeragamkan pola masuk: memindahkan Protect, Unlock, Watermark, Page Numbers, Header & Footer, Metadata, dan Organize dari "pilih dokumen" ke upload langsung.
 - Memilih Apryse atau Nutrient beserta model lisensinya untuk native editing teks yang sudah ada.
+- Mengimplementasikan Compress tiga tingkat dengan engine gambar tambahan, bukan sekadar mengganti angka `--compression-level`.
 - Mengintegrasikan Poppler untuk PDF → JPG serta memilih engine Office/HTML yang tetap mempertahankan Go sebagai satu-satunya application backend.
 - Menyediakan tool-first UI untuk rotate dan delete pages.
-- Menambah rename metadata dan kebijakan retensi/expiry Trash.
-- Menambah peringatan khusus untuk PDF signed/encrypted.
+- Menambahkan bulk restore di Trash, serta kebijakan retensi/expiry Trash.
 - Memperluas golden corpus dan visual regression menuju target hardening PRD.

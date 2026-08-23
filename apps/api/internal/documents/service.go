@@ -23,6 +23,12 @@ var (
 	ErrInvalidPDF = errors.New("invalid PDF upload")
 	ErrTooLarge   = errors.New("upload exceeds configured size limit")
 	ErrNotFound   = errors.New("document not found")
+
+	ErrInvalidPassword       = errors.New("invalid PDF password")
+	ErrPDFNotEncrypted       = errors.New("PDF is not encrypted")
+	ErrInvalidFilename       = errors.New("invalid document filename")
+	ErrInvalidWatermarkImage = errors.New("invalid watermark image")
+	ErrSignatureConfirmation = errors.New("signature invalidation confirmation required")
 )
 
 type Service struct {

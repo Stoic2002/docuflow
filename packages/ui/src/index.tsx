@@ -5,7 +5,7 @@ import type {
   ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes,
   ReactNode, SelectHTMLAttributes,
 } from "react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 function cx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
@@ -87,6 +87,32 @@ export function Field({
 
 export function TextInput({ className, invalid, ...props }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
   return <input className={cx("form-control h-9 min-h-0 text-sm", invalid && "border-accent", className)} {...props} />;
+}
+
+/**
+ * A checkbox that can also sit half-checked. `indeterminate` is a DOM property
+ * with no HTML attribute, so it has to be written to the node directly — which
+ * is why this exists instead of a bare input.
+ */
+export function Checkbox({
+  label,
+  indeterminate,
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; indeterminate?: boolean }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = Boolean(indeterminate);
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      aria-label={label}
+      className={cx("size-4 shrink-0 cursor-pointer accent-accent", className)}
+      {...props}
+    />
+  );
 }
 
 /** A titled group with a hairline above it, so a panel reads as sections. */

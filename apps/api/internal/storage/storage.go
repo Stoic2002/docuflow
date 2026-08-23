@@ -3,7 +3,6 @@ package storage
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,8 +39,6 @@ func New(root string) (*Store, error) {
 	}
 	return &Store{root: filepath.Clean(absRoot)}, nil
 }
-
-func (s *Store) Root() string { return s.root }
 
 func (s *Store) Resolve(relativePath string) (string, error) {
 	if relativePath == "" || filepath.IsAbs(relativePath) {
@@ -192,8 +189,6 @@ func (s *StagedDeletion) Commit() error {
 	s.paths = nil
 	return firstErr
 }
-
-func Copy(dst io.Writer, src io.Reader) (int64, error) { return io.Copy(dst, src) }
 
 func contains(values []string, candidate string) bool {
 	for _, value := range values {

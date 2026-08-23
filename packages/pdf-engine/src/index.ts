@@ -245,14 +245,6 @@ export class OverlayEditorEngine extends FallbackViewerEngine {
   }
 }
 
-export type PdfEngineProvider = "fallback" | "overlay" | "apryse" | "nutrient";
-
-export function createPdfEngine(provider: PdfEngineProvider = "fallback"): PdfEngine {
-  if (provider === "fallback") return new FallbackViewerEngine();
-  if (provider === "overlay") return new OverlayEditorEngine();
-  throw new Error(`${provider} is not configured; use the fallback viewer`);
-}
-
 type Matrix = [number, number, number, number, number, number];
 
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];

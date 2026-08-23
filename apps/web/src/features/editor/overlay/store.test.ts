@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { hitTest, useOverlayStore } from "./store";
+import { ZOOM_MAX, ZOOM_MIN, clampZoom, hitTest, useOverlayStore } from "./store";
 import { MAX_OBJECTS_PER_PAGE, type BoxObject, type OverlayObject, type TextObject } from "./types";
 
 function box(id: string, page = 1, overrides: Partial<BoxObject> = {}): BoxObject {
@@ -206,5 +206,36 @@ describe("duplicate and depth", () => {
     const before = state().past.length;
     state().bringToFront("tidak-ada");
     expect(state().past.length).toBe(before);
+  });
+});
+
+describe("viewport state", () => {
+  it("keeps zoom inside the range the canvas can render", () => {
+    expect(clampZoom(1)).toBe(1);
+    expect(clampZoom(0.01)).toBe(ZOOM_MIN);
+    expect(clampZoom(99)).toBe(ZOOM_MAX);
+  });
+
+  it("survives a NaN from a malformed wheel delta", () => {
+    expect(clampZoom(Number.NaN)).toBe(1);
+  });
+
+  it("accepts the fine-grained steps a trackpad pinch produces", () => {
+    expect(clampZoom(1 * Math.exp(-3 / 180))).toBeCloseTo(0.9835, 3);
+  });
+
+  it("clamps zoom set through the store and holds no document bytes", () => {
+    state().setPage(14);
+    state().setZoom(99);
+    expect(state()).toMatchObject({ page: 14, zoom: ZOOM_MAX });
+    expect(state()).not.toHaveProperty("document");
+    expect(state()).not.toHaveProperty("arrayBuffer");
+  });
+
+  it("restores the viewport when the session is torn down", () => {
+    state().setPage(9);
+    state().setZoom(3);
+    state().reset();
+    expect(state()).toMatchObject({ page: 1, zoom: 1 });
   });
 });

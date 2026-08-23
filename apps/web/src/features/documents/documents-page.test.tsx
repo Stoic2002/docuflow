@@ -66,4 +66,78 @@ describe("documents query errors", () => {
     await waitFor(() => expect(screen.queryByText("report.pdf")).not.toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith("/api/documents/11111111-1111-1111-1111-111111111111", { method: "DELETE", signal: undefined });
   });
+
+  it("deletes every selected document in one confirmed call", async () => {
+    const first = {
+      id: "11111111-1111-1111-1111-111111111111",
+      originalName: "report.pdf",
+      mediaType: "application/pdf",
+      byteSize: 42,
+      pageCount: 1,
+      checksumSha256: "a".repeat(64),
+      createdAt: "2026-08-14T00:00:00Z",
+      updatedAt: "2026-08-14T00:00:00Z",
+    };
+    const second = { ...first, id: "22222222-2222-2222-2222-222222222222", originalName: "invoice.pdf" };
+    let deleted = false;
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === "/api/documents/bulk-delete") {
+        deleted = true;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ deleted: [first.id, second.id], failed: [] }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ documents: deleted ? [] : [first, second] }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><DocumentsPage /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByLabelText("Pilih semua dokumen"));
+    expect(screen.getByText("2 dokumen dipilih")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hapus 2 dari Recent" }));
+    expect(screen.getByRole("alertdialog")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Hapus 2 dokumen dari Recent?" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Hapus 2 dari Recent" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/documents/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentIds: [first.id, second.id] }),
+      signal: undefined,
+    }));
+    await waitFor(() => expect(screen.getByText("Belum ada dokumen")).toBeVisible());
+  });
+
+  it("selects one row at a time without touching the rest", async () => {
+    const first = {
+      id: "11111111-1111-1111-1111-111111111111",
+      originalName: "report.pdf",
+      mediaType: "application/pdf",
+      byteSize: 42,
+      pageCount: 1,
+      checksumSha256: "a".repeat(64),
+      createdAt: "2026-08-14T00:00:00Z",
+      updatedAt: "2026-08-14T00:00:00Z",
+    };
+    const second = { ...first, id: "22222222-2222-2222-2222-222222222222", originalName: "invoice.pdf" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ documents: [first, second] }),
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><DocumentsPage /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByLabelText("Pilih invoice.pdf"));
+    expect(screen.getByText("1 dokumen dipilih")).toBeVisible();
+    expect(screen.getByLabelText("Pilih report.pdf")).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Hapus 1 dari Recent" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Batalkan pilihan" }));
+    expect(screen.queryByText("1 dokumen dipilih")).not.toBeInTheDocument();
+  });
 });

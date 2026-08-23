@@ -10,11 +10,10 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { capabilitiesQuery, documentFontsQuery, editSessionQuery, fontsQuery, queryKeys } from "../../api/queries";
 import { ErrorState, LoadingState } from "../../components/async-state";
-import { clampZoom, useEditorStore } from "../../stores/editor-store";
 import { EditorCanvas } from "./overlay/editor-canvas";
 import { PropertiesPanel } from "./overlay/properties-panel";
 import { toAnnotationDocument, usedAssets } from "./overlay/serialize";
-import { useOverlayStore } from "./overlay/store";
+import { clampZoom, useOverlayStore } from "./overlay/store";
 import { EditorToolbar } from "./overlay/toolbar";
 import { DEFAULT_STROKE_COLOR, MAX_ASSETS } from "./overlay/types";
 
@@ -52,10 +51,10 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const detachWheel = useRef<(() => void) | null>(null);
 
-  const page = useEditorStore((state) => state.selectedPage);
-  const setPage = useEditorStore((state) => state.setSelectedPage);
-  const zoom = useEditorStore((state) => state.zoom);
-  const setZoom = useEditorStore((state) => state.setZoom);
+  const page = useOverlayStore((state) => state.page);
+  const setPage = useOverlayStore((state) => state.setPage);
+  const zoom = useOverlayStore((state) => state.zoom);
+  const setZoom = useOverlayStore((state) => state.setZoom);
   const objects = useOverlayStore((state) => state.objects);
   const assets = useOverlayStore((state) => state.assets);
   const selectedId = useOverlayStore((state) => state.selectedId);
@@ -66,10 +65,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const redo = useOverlayStore((state) => state.redo);
   const resetOverlay = useOverlayStore((state) => state.reset);
 
-  useEffect(() => {
-    setPage(1);
-    return () => resetOverlay();
-  }, [sessionId, setPage, resetOverlay]);
+  useEffect(() => () => resetOverlay(), [sessionId, resetOverlay]);
 
   useEffect(() => {
     if (!session.data) return;

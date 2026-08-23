@@ -28,5 +28,5 @@ test-web:
 	bun run test
 
 build:
-	cd apps/api && go build -o ../../data/temporary/pdf-web-studio-api ./cmd/api
+	cd apps/api && go build -o ./bin/pdf-web-studio-api ./cmd/api
 	bun run build

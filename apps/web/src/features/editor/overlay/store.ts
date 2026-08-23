@@ -14,6 +14,15 @@ const HISTORY_LIMIT = 50;
 
 export type OverlayLimit = "page" | "document" | "assets";
 
+export const ZOOM_MIN = 0.25;
+export const ZOOM_MAX = 4;
+
+/** A trackpad pinch can produce a NaN delta, which would blank the canvas. */
+export function clampZoom(zoom: number): number {
+  if (Number.isNaN(zoom)) return 1;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+}
+
 type OverlayState = {
   objects: OverlayObject[];
   /** Uploaded JPEGs, keyed by the asset name the API will receive. */
@@ -23,7 +32,12 @@ type OverlayState = {
   past: OverlayObject[][];
   future: OverlayObject[][];
   lastLimit: OverlayLimit | null;
+  /** Which page the viewport shows, and at what scale. */
+  page: number;
+  zoom: number;
 
+  setPage: (page: number) => void;
+  setZoom: (zoom: number) => void;
   setTool: (tool: OverlayTool) => void;
   select: (id: string | null) => void;
   add: (object: OverlayObject, asset?: File) => boolean;
@@ -51,6 +65,8 @@ const empty = {
   past: [] as OverlayObject[][],
   future: [] as OverlayObject[][],
   lastLimit: null,
+  page: 1,
+  zoom: 1,
 };
 
 function pushHistory(past: OverlayObject[][], objects: OverlayObject[]): OverlayObject[][] {
@@ -63,6 +79,8 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
 
   // Switching away from Select clears the selection so a drawing tool never
   // acts on a stale object; switching back keeps whatever is selected.
+  setPage: (page) => set({ page }),
+  setZoom: (zoom) => set({ zoom: clampZoom(zoom) }),
   setTool: (tool) => set({ tool, selectedId: tool === "select" ? get().selectedId : null }),
   select: (selectedId) => set({ selectedId }),
 
