@@ -22,7 +22,8 @@ qpdf and OCRmyPDF operations are enabled only when their executables are present
 ## Prerequisites
 
 - Bun 1.3.14 (declared by root `packageManager`)
-- Go 1.24+
+- Node 22 LTS for the web toolchain (Vitest's jsdom requires it); pinned by `.nvmrc` — run `nvm use`
+- Go 1.25.7+ (`go.mod` declares it; a matching toolchain is downloaded automatically when `GOTOOLCHAIN=auto`)
 - PostgreSQL 16+ locally, or a PostgreSQL-compatible Supabase connection
 - Optional: qpdf and OCRmyPDF/Tesseract language packs
 

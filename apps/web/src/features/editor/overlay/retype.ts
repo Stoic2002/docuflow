@@ -1,4 +1,5 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
+import { describeFontName, type FontStyle } from "./font-variants";
 import type { PdfTextRun, PdfVectorRule } from "@pdf-studio/pdf-engine";
 
 /**
@@ -114,7 +115,32 @@ export function analyzeBackground(
 }
 
 function normalizeFamily(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // A subsetted font arrives tagged, as in "ABCDEF+Roboto"; the tag says which
+  // subset it is, never which family, so it goes before anything else.
+  return value.replace(/^[A-Z]{6}\+/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Proprietary families that PDFs routinely embed, mapped to the free
+ * metric-compatible stand-in shipped in assets/fonts. Metrics match, so
+ * replacement text occupies exactly the space the original did.
+ */
+const ALIAS_RULES: Array<[needles: string[], family: string]> = [
+  [["times"], "Tinos"],
+  [["arial", "helvetica"], "Arimo"],
+  [["calibri"], "Carlito"],
+  [["cambria"], "Caladea"],
+  [["georgia"], "Gelasio"],
+  [["mincho"], "Shippori Mincho"],
+];
+
+/** The substitute family for a document font, when a known alias applies. */
+export function aliasFamilyFor(fontFamily: string): string | null {
+  const lower = fontFamily.toLowerCase();
+  for (const [needles, family] of ALIAS_RULES) {
+    if (needles.some((needle) => lower.includes(needle))) return family;
+  }
+  return null;
 }
 
 /**
@@ -122,29 +148,82 @@ function normalizeFamily(value: string): string {
  * replacement blends in. Falls back to a face with the same serif and pitch
  * character, then to the built-in Helvetica.
  */
-export function matchFont(fontFamily: string, fonts: RegisteredFont[]): string {
+export function matchFont(fontFamily: string, fonts: RegisteredFont[], declared?: FontStyle): string {
   if (fonts.length === 0) return "";
   const wanted = normalizeFamily(fontFamily);
-  const exact = fonts.find((font) => normalizeFamily(font.family) === wanted);
-  if (exact) return exact.id;
-  const partial = fonts.find((font) => {
-    const family = normalizeFamily(font.family);
-    return wanted.length > 2 && (family.includes(wanted) || wanted.includes(family));
-  });
-  if (partial) return partial.id;
+  const described = describeFontName(fontFamily);
+  const wantedStem = described.stem;
+  // What the font program declares beats what its name reads, and it is the
+  // only clue at all when the name is a generic like "sans-serif".
+  const wantedStyle = declared ?? described.style;
+  const candidates = fonts.map((font) => ({
+    font,
+    normalized: normalizeFamily(font.family),
+    ...describeFontName(font.family),
+  }));
+
+  // The very same face, when the document uses one the server also has.
+  const exact = candidates.find((candidate) => candidate.normalized === wanted);
+  if (exact) return exact.font.id;
+
+  // Otherwise the family comes first and the emphasis second. Matching on the
+  // whole name instead would take whichever face sorted first — the reason a
+  // plain "Roboto" run came back as Roboto-Bold.
+  const sameFamily = candidates.filter((candidate) => candidate.stem === wantedStem);
+  const chosen = closestStyle(sameFamily, wantedStyle);
+  if (chosen) return chosen;
+
+  const related = candidates.filter(
+    (candidate) =>
+      wantedStem.length > 2 &&
+      candidate.stem.length > 2 &&
+      (candidate.stem.includes(wantedStem) || wantedStem.includes(candidate.stem)),
+  );
+  const loose = closestStyle(related, wantedStyle);
+  if (loose) return loose;
+
+  // A known proprietary family resolves to its metric-compatible stand-in;
+  // these substitutes are shipped precisely so this lookup succeeds.
+  const alias = aliasFamilyFor(fontFamily);
+  if (alias) {
+    const aliasStem = describeFontName(alias).stem;
+    const aliased = closestStyle(candidates.filter((candidate) => candidate.stem === aliasStem), wantedStyle);
+    if (aliased) return aliased;
+  }
+
   const lower = fontFamily.toLowerCase();
   // Pitch outranks serif: a monospace request is satisfied by any monospace
   // face, whether or not that face happens to have serifs.
   if (lower.includes("mono") || lower.includes("courier")) {
-    const fixed = fonts.find((font) => font.fixed);
-    if (fixed) return fixed.id;
+    const fixed = closestStyle(candidates.filter((candidate) => candidate.font.fixed), wantedStyle);
+    if (fixed) return fixed;
   }
   const wantsSerif = lower.includes("sans")
     ? false
     : lower.includes("serif") || lower.includes("times") || lower.includes("georgia") || lower.includes("roman");
-  const byCharacter = fonts.find((font) => !font.fixed && font.serif === wantsSerif);
-  return byCharacter?.id ?? "";
+  const byCharacter = candidates.filter((candidate) => !candidate.font.fixed && candidate.font.serif === wantsSerif);
+  return closestStyle(byCharacter, wantedStyle) ?? "";
 }
+
+/**
+ * The face in a shortlist that carries the wanted emphasis, falling back to the
+ * plain one. Taking the first entry instead is how an unemphasised run ended up
+ * bold: the registry is ordered by file name, and "Bold" sorts before
+ * "Regular".
+ */
+function closestStyle(
+  candidates: Array<{ font: RegisteredFont; style: FontStyle }>,
+  want: FontStyle,
+): string | null {
+  if (candidates.length === 0) return null;
+  const sameStyle = candidates.find(
+    (candidate) => candidate.style.bold === want.bold && candidate.style.italic === want.italic,
+  );
+  if (sameStyle) return sameStyle.font.id;
+  const plain = candidates.find((candidate) => !candidate.style.bold && !candidate.style.italic);
+  return (plain ?? candidates[0]).font.id;
+}
+
 
 /** Runs too small to click reliably are hidden from the picker. */
 export function pickableRuns(runs: PdfTextRun[]): PdfTextRun[] {
@@ -154,15 +233,16 @@ export function pickableRuns(runs: PdfTextRun[]): PdfTextRun[] {
 /**
  * Guesses the colour of the original glyphs so the replacement text matches.
  * The ink is whichever sampled pixel sits furthest from the background, which
- * works for dark text on light pages and for light text on dark ones.
+ * works for dark text on light pages and for light text on dark ones. Null
+ * means the box holds nothing but background — a space, or an empty margin.
  */
-export function inkColorFor(
+export function sampledInk(
   data: Uint8ClampedArray,
   imageWidth: number,
   imageHeight: number,
   box: { x: number; y: number; width: number; height: number },
   background: string,
-): string {
+): string | null {
   const target = [1, 3, 5].map((offset) => parseInt(background.slice(offset, offset + 2), 16));
   let best: [number, number, number] | null = null;
   let bestDistance = -1;
@@ -181,9 +261,20 @@ export function inkColorFor(
       }
     }
   }
-  // A run that never differs from its background has no ink to copy.
-  if (!best || bestDistance < 40) return "#111111";
+  // Nothing here differs from its background, so there is no ink to read.
+  if (!best || bestDistance < 40) return null;
   return `#${toHex(best[0])}${toHex(best[1])}${toHex(best[2])}`;
+}
+
+/** The colour of the ink in a box, falling back to near-black when there is none. */
+export function inkColorFor(
+  data: Uint8ClampedArray,
+  imageWidth: number,
+  imageHeight: number,
+  box: { x: number; y: number; width: number; height: number },
+  background: string,
+): string {
+  return sampledInk(data, imageWidth, imageHeight, box, background) ?? "#111111";
 }
 
 /**

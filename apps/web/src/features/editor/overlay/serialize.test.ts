@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { toAnnotationDocument, usedAssets } from "./serialize";
-import type { BoxObject, ImageObject, PathObject, OverlayObject, TextObject } from "./types";
+import { LINE_HEIGHT, setTextLayout, type BoxObject, type ImageObject, type PathObject, type OverlayObject, type TextObject } from "./types";
 
 const text: TextObject = {
   id: "t1", kind: "text", page: 2, text: "Disetujui", x: 100, y: 700,
@@ -105,5 +105,34 @@ describe("text emphasis and arrows", () => {
   it("omits the arrow flag on a plain line", () => {
     const [page] = toAnnotationDocument([straight]).pages;
     expect(page.shapes?.[0]).not.toHaveProperty("arrow");
+  });
+});
+
+describe("wrapped text", () => {
+  afterEach(() => setTextLayout(null));
+
+  it("sends one positioned run per line, top down", () => {
+    // The engine places runs and never reflows them, so the breaks the browser
+    // measured have to travel as separate texts.
+    setTextLayout(() => ({ lines: ["baris satu", "baris dua"], width: 160 }));
+    const wrapped: TextObject = {
+      id: "t1", kind: "text", page: 1, text: "baris satu baris dua",
+      x: 100, y: 700, fontSize: 20, font: "", color: "#111111",
+      align: "left", opacity: 1, rotation: 0, boxWidth: 160,
+    };
+    const [page] = toAnnotationDocument([wrapped]).pages;
+    expect(page.texts).toHaveLength(2);
+    expect(page.texts?.[0]).toMatchObject({ text: "baris satu", x: 100, y: 700 });
+    expect(page.texts?.[1]).toMatchObject({ text: "baris dua", x: 100, y: 700 - 20 * LINE_HEIGHT });
+  });
+
+  it("still sends unwrapped text as a single run", () => {
+    setTextLayout(() => ({ lines: ["satu baris saja"], width: 160 }));
+    const plain: TextObject = {
+      id: "t2", kind: "text", page: 1, text: "satu baris saja",
+      x: 10, y: 20, fontSize: 12, font: "", color: "#111111",
+      align: "left", opacity: 1, rotation: 0,
+    };
+    expect(toAnnotationDocument([plain]).pages[0].texts).toHaveLength(1);
   });
 });

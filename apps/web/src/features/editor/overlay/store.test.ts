@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ZOOM_MAX, ZOOM_MIN, clampZoom, hitTest, useOverlayStore } from "./store";
+import { ZOOM_MAX, ZOOM_MIN, clampZoom, hitTest, pickAt, useOverlayStore } from "./store";
 import { MAX_OBJECTS_PER_PAGE, type BoxObject, type OverlayObject, type TextObject } from "./types";
 
 function box(id: string, page = 1, overrides: Partial<BoxObject> = {}): BoxObject {
@@ -237,5 +237,115 @@ describe("viewport state", () => {
     state().setZoom(3);
     state().reset();
     expect(state()).toMatchObject({ page: 1, zoom: 1 });
+  });
+});
+
+describe("pinned patches", () => {
+  /** What a cover-and-retype pick leaves behind: a patch, plus its replacement. */
+  function retypePair() {
+    const cover = box("cover", 1, { groupId: "g", pinned: true, x: 200, y: 392, width: 120, height: 24 });
+    const replacement: TextObject = { ...text("teks"), groupId: "g" };
+    state().addMany([cover, replacement]);
+    return { cover, replacement };
+  }
+
+  it("leaves the patch behind when the replacement is dragged away", () => {
+    retypePair();
+    state().move("teks", 40, -30);
+    const [cover, replacement] = state().objects as [BoxObject, TextObject];
+    // The patch hides the printed text, so moving it would let the original
+    // show through next to the replacement.
+    expect(cover).toMatchObject({ x: 200, y: 392 });
+    expect(replacement).toMatchObject({ x: 240, y: 370 });
+  });
+
+  it("still deletes the pair together", () => {
+    retypePair();
+    state().remove("teks");
+    expect(state().objects).toHaveLength(0);
+  });
+
+  it("still restacks the pair together, patch first", () => {
+    state().add(box("lain"));
+    retypePair();
+    state().sendToBack("teks");
+    expect(state().objects.map((object) => object.id)).toEqual(["cover", "teks", "lain"]);
+  });
+
+  it("duplicates the replacement without copying the patch", () => {
+    retypePair();
+    state().duplicate("teks");
+    const copies = state().objects.filter((object) => !["cover", "teks"].includes(object.id));
+    expect(copies).toHaveLength(1);
+    expect(copies[0].kind).toBe("text");
+  });
+
+  it("moves a whole taken-over paragraph as one, patches excepted", () => {
+    // A block arrives as one patch and one text object per line, all sharing a
+    // group: dragging any line should carry the paragraph.
+    state().addMany([
+      box("patch-1", 1, { groupId: "blok", pinned: true, x: 200, y: 392 }),
+      { ...text("baris-1"), groupId: "blok", y: 400 },
+      box("patch-2", 1, { groupId: "blok", pinned: true, x: 200, y: 378 }),
+      { ...text("baris-2"), groupId: "blok", y: 386 },
+    ]);
+    state().move("baris-1", 0, -20);
+    const byId = Object.fromEntries(state().objects.map((object) => [object.id, object]));
+    expect((byId["baris-1"] as TextObject).y).toBe(380);
+    expect((byId["baris-2"] as TextObject).y).toBe(366);
+    expect((byId["patch-1"] as BoxObject).y).toBe(392);
+    expect((byId["patch-2"] as BoxObject).y).toBe(378);
+  });
+
+  it("hands a click on the patch over to the replacement", () => {
+    retypePair();
+    // A point inside the patch but clear of the words themselves.
+    expect(pickAt(state().objects, 1, 310, 400)?.id).toBe("teks");
+  });
+
+  it("picks an ordinary object exactly as hitTest does", () => {
+    state().add(box("a"));
+    expect(pickAt(state().objects, 1, 20, 20)?.id).toBe("a");
+    expect(pickAt(state().objects, 1, 900, 900)).toBeNull();
+  });
+});
+
+describe("replace", () => {
+  it("swaps one object for its pieces, in the same place in the stack", () => {
+    state().add(box("bawah"));
+    state().add(text("asal"));
+    state().add(box("atas"));
+    const pieces: OverlayObject[] = [
+      { ...text("asal"), text: "satu" },
+      { ...text("kedua"), text: "dua" },
+    ];
+    expect(state().replace("asal", pieces)).toBe(true);
+    expect(state().objects.map((object) => object.id)).toEqual(["bawah", "asal", "kedua", "atas"]);
+  });
+
+  it("keeps the selection on the piece that carried the id", () => {
+    state().add(text("asal"));
+    state().replace("asal", [{ ...text("pertama") }, { ...text("asal") }]);
+    expect(state().selectedId).toBe("asal");
+  });
+
+  it("records one history step, so a single undo puts the object back", () => {
+    state().add(text("asal"));
+    state().replace("asal", [{ ...text("a") }, { ...text("b") }]);
+    state().undo();
+    expect(state().objects.map((object) => object.id)).toEqual(["asal"]);
+  });
+
+  it("clears the text selection and bumps the revision", () => {
+    state().add(text("asal"));
+    state().setTextRange({ id: "asal", start: 1, end: 2 });
+    const before = state().revision;
+    state().replace("asal", [{ ...text("a") }, { ...text("b") }]);
+    expect(state().textRange).toBeNull();
+    expect(state().revision).toBe(before + 1);
+  });
+
+  it("refuses an id that is not there", () => {
+    expect(state().replace("tidak-ada", [text("a")])).toBe(false);
   });
 });

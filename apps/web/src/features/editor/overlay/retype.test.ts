@@ -116,6 +116,108 @@ describe("matchFont", () => {
     expect(matchFont("Helvetica Neue", fonts)).toBe("arialmt");
   });
 
+  it("maps proprietary families to their metric-compatible substitutes", () => {
+    const substitutes = [
+      { id: "tinos", family: "Tinos", serif: true, fixed: false, category: "serif" as const },
+      { id: "arimo", family: "Arimo", serif: false, fixed: false, category: "sans" as const },
+      { id: "carlito", family: "Carlito", serif: false, fixed: false, category: "sans" as const },
+      { id: "shipporimincho", family: "Shippori Mincho", serif: true, fixed: false, category: "serif" as const },
+    ];
+    expect(matchFont("TimesNewRomanPSMT", substitutes)).toBe("tinos");
+    expect(matchFont("TimesNewRomanPS-BoldMT", substitutes)).toBe("tinos");
+    expect(matchFont("TimesLTPro-Roman", substitutes)).toBe("tinos");
+    expect(matchFont("Arial-BoldMT", substitutes)).toBe("arimo");
+    expect(matchFont("Arial-ItalicMT", substitutes)).toBe("arimo");
+    expect(matchFont("Calibri", substitutes)).toBe("carlito");
+    expect(matchFont("MS-PMincho", substitutes)).toBe("shipporimincho");
+  });
+
+  it("keeps a plain run plain when the family ships several weights", () => {
+    // The registry is ordered by file name, so "Roboto-Bold" sits before
+    // "Roboto-Regular": matching on the whole name used to turn every plain
+    // Roboto run bold the moment it was clicked.
+    const family = [
+      { id: "roboto-bold", family: "Roboto-Bold", serif: false, fixed: false, category: "sans" as const },
+      { id: "roboto-bolditalic", family: "Roboto-BoldItalic", serif: false, fixed: false, category: "sans" as const },
+      { id: "roboto-italic", family: "Roboto-Italic", serif: false, fixed: false, category: "sans" as const },
+      { id: "roboto-regular", family: "Roboto-Regular", serif: false, fixed: false, category: "sans" as const },
+    ];
+    expect(matchFont("Roboto", family)).toBe("roboto-regular");
+    expect(matchFont("Roboto-Bold", family)).toBe("roboto-bold");
+    expect(matchFont("Roboto-Italic", family)).toBe("roboto-italic");
+    expect(matchFont("Roboto-BoldItalic", family)).toBe("roboto-bolditalic");
+  });
+
+  it("reads the emphasis out of a PostScript name", () => {
+    const family = [
+      { id: "arimo-bold", family: "Arimo-Bold", serif: false, fixed: false, category: "sans" as const },
+      { id: "arimo-italic", family: "Arimo-Italic", serif: false, fixed: false, category: "sans" as const },
+      { id: "arimo-regular", family: "Arimo-Regular", serif: false, fixed: false, category: "sans" as const },
+    ];
+    // The style word sits mid-name here, not at the end.
+    expect(matchFont("Arial-BoldMT", family)).toBe("arimo-bold");
+    expect(matchFont("Arial-ItalicMT", family)).toBe("arimo-italic");
+    expect(matchFont("ArialMT", family)).toBe("arimo-regular");
+  });
+
+  it("resolves a substitute family that ships as separate faces", () => {
+    // Shipped as Tinos-Regular and friends, never as a bare "Tinos", so the
+    // alias has to match the family rather than the exact name.
+    const shipped = [
+      { id: "tinos-bold", family: "Tinos-Bold", serif: true, fixed: false, category: "serif" as const },
+      { id: "tinos-regular", family: "Tinos-Regular", serif: true, fixed: false, category: "serif" as const },
+    ];
+    expect(matchFont("TimesNewRomanPSMT", shipped)).toBe("tinos-regular");
+    expect(matchFont("TimesNewRomanPS-BoldMT", shipped)).toBe("tinos-bold");
+  });
+
+  it("ignores the tag a subsetted font carries", () => {
+    const family = [
+      { id: "lato-bold", family: "Lato-Bold", serif: false, fixed: false, category: "sans" as const },
+      { id: "lato-regular", family: "Lato-Regular", serif: false, fixed: false, category: "sans" as const },
+    ];
+    expect(matchFont("ABCDEF+Lato", family)).toBe("lato-regular");
+    expect(matchFont("ABCDEF+Lato-Bold", family)).toBe("lato-bold");
+  });
+
+  it("reads the weight out of the name a subsetted font carries", () => {
+    // What a real file gives us, checked against PDF.js: getTextContent calls
+    // every face "sans-serif", and the font object names it "BZZZZZ+Arial-
+    // BoldMT" with no weight flags at all. The name is then the only clue,
+    // so it must survive the subset tag and the foundry suffix.
+    const shipped = [
+      { id: "arimo-bold", family: "Arimo-Bold", serif: false, fixed: false, category: "sans" as const },
+      { id: "arimo-italic", family: "Arimo-Italic", serif: false, fixed: false, category: "sans" as const },
+      { id: "arimo-regular", family: "Arimo-Regular", serif: false, fixed: false, category: "sans" as const },
+      { id: "roboto-bold", family: "Roboto-Bold", serif: false, fixed: false, category: "sans" as const },
+      { id: "roboto-regular", family: "Roboto-Regular", serif: false, fixed: false, category: "sans" as const },
+    ];
+    expect(matchFont("BZZZZZ+Arial-BoldMT", shipped)).toBe("arimo-bold");
+    expect(matchFont("CZZZZZ+ArialMT", shipped)).toBe("arimo-regular");
+    expect(matchFont("DZZZZZ+Arial-ItalicMT", shipped)).toBe("arimo-italic");
+    expect(matchFont("EZZZZZ+Roboto-Bold", shipped)).toBe("roboto-bold");
+  });
+
+  it("trusts the emphasis the font program declares over its name", () => {
+    // PDF.js reports a generic family for most embedded fonts — every face on
+    // the page arrives as "sans-serif" — so the flags are the only clue that a
+    // fragment was printed bold, and matching without them turned bold text
+    // regular the moment it was clicked.
+    const family = [
+      { id: "arimo-bold", family: "Arimo-Bold", serif: false, fixed: false, category: "sans" as const },
+      { id: "arimo-italic", family: "Arimo-Italic", serif: false, fixed: false, category: "sans" as const },
+      { id: "arimo-regular", family: "Arimo-Regular", serif: false, fixed: false, category: "sans" as const },
+    ];
+    expect(matchFont("sans-serif", family, { bold: true, italic: false })).toBe("arimo-bold");
+    expect(matchFont("sans-serif", family, { bold: false, italic: true })).toBe("arimo-italic");
+    expect(matchFont("sans-serif", family, { bold: false, italic: false })).toBe("arimo-regular");
+    // A name that matches a registered face exactly still wins: the document
+    // is naming that very face, and its own flags will agree.
+    expect(matchFont("Arimo-Bold", family, { bold: false, italic: false })).toBe("arimo-bold");
+    // Where the name only gives a family, the flags decide which face of it.
+    expect(matchFont("Arimo", family, { bold: true, italic: false })).toBe("arimo-bold");
+  });
+
   it("uses the built-in font when nothing is registered", () => {
     expect(matchFont("ArialMT", [])).toBe("");
   });

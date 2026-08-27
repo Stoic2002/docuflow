@@ -315,6 +315,12 @@ export const api = {
     ),
   fonts: (signal?: AbortSignal) =>
     request<{ fonts: RegisteredFont[]; issues: FontIssue[] }>("/api/fonts", { signal }),
+  /**
+   * Where the raw TrueType program of a registered font lives. The browser
+   * loads it as a web font so previews and text measurement use the same face
+   * the export embeds, instead of whatever happens to be installed locally.
+   */
+  fontFileUrl: (fontId: string) => `/api/fonts/${encodeURIComponent(fontId)}/file`,
   documentFonts: (documentId: string, signal?: AbortSignal) =>
     request<{ fonts: DocumentFont[] }>(`/api/documents/${encodeURIComponent(documentId)}/fonts`, { signal }),
   /**

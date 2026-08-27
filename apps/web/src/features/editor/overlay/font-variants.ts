@@ -35,6 +35,37 @@ export function splitFamily(family: string): { stem: string; style: FontStyle } 
   return { stem: rest, style };
 }
 
+/**
+ * Style words that PostScript names carry, plus the foundry noise they end
+ * with. `splitFamily` only strips a trailing style word, which is all a
+ * registry face needs ("Roboto-Bold"); a name taken from a document puts them
+ * mid-word instead ("Arial-BoldMT", "TimesNewRomanPS-BoldMT"), so this reads
+ * the whole name and peels the noise off first.
+ */
+const NAME_NOISE = /(psmt|ps|mt)$/;
+const NAME_STYLE = /(semibold|demibold|extrabold|ultrabold|bold|black|heavy|light|thin|medium|regular|book|roman|italic|oblique)$/;
+
+export function describeFontName(family: string): { stem: string; style: FontStyle } {
+  // A subsetted font is tagged, as in "BZZZZZ+Arial-BoldMT"; the tag names the
+  // subset, never the family, so it is dropped before anything else.
+  const normalized = normalize(family.replace(/^[A-Z]{6}\+/, ""));
+  const style: FontStyle = {
+    bold: /bold|black|heavy/.test(normalized),
+    italic: /italic|oblique/.test(normalized),
+  };
+  let stem = normalized;
+  // Peel noise and style words off the tail until nothing more comes away, so
+  // "timesnewromanpsboldmt" reduces the same way "robotobold" does.
+  for (let previous = ""; previous !== stem; ) {
+    previous = stem;
+    stem = stem.replace(NAME_NOISE, "");
+    const trimmed = stem.replace(NAME_STYLE, "");
+    // Never strip a name down to nothing: "Bold" alone is a family, not a style.
+    if (trimmed.length > 0) stem = trimmed;
+  }
+  return { stem, style };
+}
+
 /** The emphasis a font id already carries by virtue of which face it is. */
 export function styleOf(fontId: string, fonts: RegisteredFont[]): FontStyle {
   const font = fonts.find((entry) => entry.id === fontId);

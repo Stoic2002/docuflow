@@ -1,6 +1,6 @@
 import type { RegisteredFont } from "@pdf-studio/api-client";
 import { arrowHeadPoints, flipY, fontStack } from "./geometry";
-import { type OverlayObject, boundsOf, isBox, isPath } from "./types";
+import { LINE_HEIGHT, type OverlayObject, boundsOf, isBox, isPath, textLayoutOf } from "./types";
 
 /**
  * Objects are drawn in an SVG whose viewBox is the page box in points, so the
@@ -42,7 +42,15 @@ function ObjectShape({ object, pageHeight, fonts }: { object: OverlayObject; pag
           textDecoration: decoration || undefined,
         }}
       >
-        {object.text}
+        {textLayoutOf(object).lines.map((line, index) => (
+          <tspan
+            key={`${index}-${line}`}
+            x={object.x}
+            dy={index === 0 ? 0 : object.fontSize * LINE_HEIGHT}
+          >
+            {line}
+          </tspan>
+        ))}
       </text>
     );
   }
@@ -104,41 +112,23 @@ function ObjectShape({ object, pageHeight, fonts }: { object: OverlayObject; pag
   );
 }
 
-function SelectionOutline({ object, pageHeight, scale }: { object: OverlayObject; pageHeight: number; scale: number }) {
-  const bounds = boundsOf(object);
-  const padding = 3 / scale;
-  return (
-    <rect
-      x={bounds.x - padding}
-      y={flipY(bounds.y + bounds.height, pageHeight) - padding}
-      width={Math.max(bounds.width, 1) + padding * 2}
-      height={Math.max(bounds.height, 1) + padding * 2}
-      fill="none"
-      stroke="#ff2d2d"
-      strokeWidth={1.5 / scale}
-      strokeDasharray={`${4 / scale} ${3 / scale}`}
-      pointerEvents="none"
-      transform={object.rotation ? rotationTransform(object, pageHeight) : undefined}
-    />
-  );
-}
-
 export function ObjectLayer({
   objects,
   pageWidth,
   pageHeight,
-  selectedId,
   scale,
   fonts,
   draft,
+  hiddenId,
 }: {
   objects: OverlayObject[];
   pageWidth: number;
   pageHeight: number;
-  selectedId: string | null;
   scale: number;
   fonts: RegisteredFont[];
   draft: OverlayObject | null;
+  /** Object the caret editor is showing instead, so it is not drawn twice. */
+  hiddenId?: string | null;
 }) {
   return (
     <svg
@@ -148,15 +138,12 @@ export function ObjectLayer({
       className="absolute left-0 top-0"
       aria-hidden="true"
     >
-      {objects.map((object) => (
-        <ObjectShape key={object.id} object={object} pageHeight={pageHeight} fonts={fonts} />
-      ))}
-      {draft ? <ObjectShape object={draft} pageHeight={pageHeight} fonts={fonts} /> : null}
       {objects
-        .filter((object) => object.id === selectedId)
+        .filter((object) => object.id !== hiddenId)
         .map((object) => (
-          <SelectionOutline key={`outline-${object.id}`} object={object} pageHeight={pageHeight} scale={scale} />
+          <ObjectShape key={object.id} object={object} pageHeight={pageHeight} fonts={fonts} />
         ))}
+      {draft ? <ObjectShape object={draft} pageHeight={pageHeight} fonts={fonts} /> : null}
     </svg>
   );
 }

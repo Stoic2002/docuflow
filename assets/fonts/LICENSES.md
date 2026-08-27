@@ -3,7 +3,14 @@
 Setiap keluarga font di direktori ini beserta pemberitahuan hak ciptanya.
 Lisensi wajib ikut didistribusikan bersama fontnya; jangan hapus berkas ini.
 
-Semuanya SIL Open Font License 1.1 kecuali Roboto, yang Apache License 2.0.
+Semuanya SIL Open Font License 1.1 kecuali:
+
+- **Roboto, Tinos, Arimo** — Apache License 2.0;
+- **CMU Serif & CMU Typewriter** (Computer Modern Unicode) — GUST Font License.
+
+Keluarga Tinos/Arimo/Carlito/Caladea/Gelasio adalah pengganti bebas yang
+metriknya kompatibel dengan Times New Roman/Arial/Calibri/Cambria/Georgia;
+font proprietary aslinya tidak boleh didistribusikan di repo ini.
 
 
 ---
@@ -1819,3 +1826,100 @@ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 ```
+
+---
+
+## Tinos & Arimo
+
+```
+Copyright (c) 2011 Steve Matteson, Copyright (c) 2019 Google LLC.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
+
+Metrik kompatibel dengan Times New Roman (Tinos) dan Arial (Arimo).
+
+## Carlito
+
+```
+Copyright (c) 2013-2021, Łukasz Dziedzic (tyPoland) with Reserved Font Name "Carlito".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```
+
+Metrik kompatibel dengan Calibri.
+
+## Caladea
+
+```
+Copyright (c) 2012, Huerta Tipográfica (carolina giovagnoli), with Reserved Font Names "Caladea" and "Caladea Text".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```
+
+Metrik kompatibel dengan Cambria.
+
+## Gelasio
+
+```
+Copyright 2015-2021 The Gelasio Project Authors (https://github.com/SorkinType/Gelasio)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```
+
+Metrik kompatibel dengan Georgia.
+
+## PT Serif
+
+```
+Copyright (c) 2010, ParaType Ltd. (Alexandra Korolkova, Olga Umpeleva and Vladimir Yefimov), with Reserved Font Names "PT Serif", "PT Sans" and "PT Mono".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```
+
+## Source Serif 4
+
+```
+Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name "Source".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```
+
+## Libre Baskerville
+
+```
+Copyright (c) 2012, Impallari Type (Pablo Impallari, Igino Marini), with Reserved Font Names "Libre Baskerville".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```
+
+## CMU Serif & CMU Typewriter (Computer Modern Unicode)
+
+```
+Copyright (c) 1997-2020 The cm-unicode project (Andrey V. Panov et al.).
+
+These fonts are released under the GUST Font License (GFL), which is a free
+license legalizing embedding and redistribution, available with an FAQ at:
+http://www.gust.org.pl/projects/e-foundry/tex-gyre
+```
+
+Implementasi TrueType dari Computer Modern, keluarga standar LaTeX untuk
+paper matematika dan teknik. Teks tebal/miring yang tidak tersedia
+disintesis engine mengikuti aturan gaya yang sudah ada.
+
+---
+
+## Shippori Mincho
+
+```
+Copyright 2019-2021 The Shippori Mincho Project Authors (https://github.com/fontsource/font-foundry), with Reserved Font Name "Shippori Mincho".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+```
+
+Pengganti bebas untuk MS PMincho (font Jepang proprietary); dipakai otomatis
+oleh alur cover & retype ketika dokumen memuat keluarga Mincho.

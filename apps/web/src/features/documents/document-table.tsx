@@ -5,8 +5,9 @@ import { Link } from "@tanstack/react-router";
 import {
   createColumnHelper,
   flexRender,
-  getCoreRowModel,
-  useReactTable,
+  rowSelectionFeature,
+  tableFeatures,
+  useTable,
   type RowSelectionState,
 } from "@tanstack/react-table";
 import { Download, Eye, Pencil, Trash2 } from "lucide-react";
@@ -14,7 +15,10 @@ import { useState } from "react";
 import { queryKeys } from "../../api/queries";
 import { formatBytes, formatDate } from "../../lib/format";
 
-const column = createColumnHelper<DocumentRecord>();
+// Table v9: features are explicit (tree-shakeable) and the column helper is
+// typed with both the feature set and the row shape.
+const features = tableFeatures({ rowSelectionFeature });
+const column = createColumnHelper<typeof features, DocumentRecord>();
 
 export function DocumentTable({ documents }: { documents: DocumentRecord[] }) {
   const queryClient = useQueryClient();
@@ -49,14 +53,16 @@ export function DocumentTable({ documents }: { documents: DocumentRecord[] }) {
     mutationFn: ({ id, name }: { id: string; name: string }) => api.renameDocument(id, name),
     onSuccess: async () => { setDocumentToRename(undefined); await queryClient.invalidateQueries({ queryKey: queryKeys.documents }); },
   });
-  const columns = [
+  const columns = column.columns([
     column.display({
       id: "select",
       header: ({ table }) => (
         <Checkbox
           label="Pilih semua dokumen"
           checked={table.getIsAllRowsSelected()}
-          indeterminate={table.getIsSomeRowsSelected()}
+          // v9 counts "some" as soon as one row is selected; keep the half
+          // state only while a proper subset is selected.
+          indeterminate={table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()}
           onChange={table.getToggleAllRowsSelectedHandler()}
         />
       ),
@@ -106,11 +112,12 @@ export function DocumentTable({ documents }: { documents: DocumentRecord[] }) {
         </div>
       ),
     }),
-  ];
-  const table = useReactTable({
+  ]);
+  const table = useTable({
+    key: "documents",
+    features,
     data: documents,
     columns,
-    getCoreRowModel: getCoreRowModel(),
     // Keyed by document id so a refetch that reorders rows keeps the selection
     // pointing at the same documents.
     getRowId: (row) => row.id,
@@ -183,7 +190,7 @@ export function DocumentTable({ documents }: { documents: DocumentRecord[] }) {
           <tbody className="divide-y divide-line">
             {table.getRowModel().rows.map((row) => (
               <tr key={row.id} className={`transition hover:bg-accent-soft/30 ${row.getIsSelected() ? "bg-accent-soft/40" : ""}`}>
-                {row.getVisibleCells().map((cell) => (
+                {row.getAllCells().map((cell) => (
                   <td key={cell.id} className="px-5 py-4 text-muted">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>

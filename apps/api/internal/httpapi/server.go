@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -37,7 +39,10 @@ func New(cfg config.Config, pool *pgxpool.Pool, store *storage.Store, detector *
 	router.Use(server.timeout)
 	router.Get("/api/health", server.health)
 	router.Get("/api/capabilities", server.capabilities)
-	router.Get("/api/fonts", server.listFonts)
+	router.Route("/api/fonts", func(router chi.Router) {
+		router.Get("/", server.listFonts)
+		router.Get("/{fontId}/file", server.getFontFile)
+	})
 	router.Route("/api/edit-sessions", func(router chi.Router) {
 		router.Post("/", server.createEditSession)
 		router.Get("/{sessionId}", server.getEditSession)
@@ -198,4 +203,25 @@ func (s *Server) listFonts(w http.ResponseWriter, r *http.Request) {
 		issues = []processing.FontIssue{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"fonts": fonts, "issues": issues})
+}
+
+// getFontFile hands the browser the TrueType program itself, so an editor can
+// preview and measure text with the very face the export will embed instead of
+// guessing with whatever the reader happens to have installed. Only registry
+// entries are reachable, which keeps the embeddability and licence checks the
+// registry already made in force, and keeps the path off the filesystem.
+func (s *Server) getFontFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "fontId")
+	font, err := s.fonts.Lookup(id)
+	if err != nil || font == nil {
+		writeError(w, http.StatusNotFound, "FONT_NOT_FOUND", "Font is not registered on this server", map[string]any{"font": id})
+		return
+	}
+	// The registry is built once at startup, so these bytes cannot change while
+	// the process runs; the tag lets a restart with a replaced file win.
+	w.Header().Set("ETag", strconv.Quote(id+"-"+strconv.Itoa(len(font.Data))))
+	w.Header().Set("Content-Type", "font/ttf")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "public, max-age=86400, no-transform")
+	http.ServeContent(w, r, id+".ttf", time.Time{}, bytes.NewReader(font.Data))
 }

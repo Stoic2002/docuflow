@@ -1,33 +1,59 @@
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 import { Slot } from "@radix-ui/react-slot";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { cva, type VariantProps } from "class-variance-authority";
 import type {
   ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes,
   ReactNode, SelectHTMLAttributes,
 } from "react";
 import { useEffect, useId, useRef, useState } from "react";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-function cx(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
+/** shadcn-style class combiner: conditional classes plus Tailwind conflict resolution. */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
 }
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  asChild?: boolean;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
-};
+/**
+ * shadcn-style button: variants and sizes live in one cva table so call sites
+ * can compose `variant` / `size` / className freely (twMerge resolves clashes).
+ * The palette stays Docuflow's ink/paper/accent instead of shadcn's zinc.
+ */
+const buttonVariants = cva(
+  "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-bold leading-none transition-all duration-200 outline-none focus-visible:ring-[3px] focus-visible:ring-accent/40 disabled:pointer-events-none disabled:bg-[#ded9d1] disabled:text-[#8b867e] disabled:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        primary: "border border-ink bg-ink text-paper hover:border-accent hover:bg-accent",
+        secondary: "border border-ink bg-paper text-ink hover:bg-accent-soft",
+        ghost: "text-ink hover:bg-accent-soft hover:text-accent",
+        danger: "border border-accent bg-accent text-white hover:bg-[#d71919]",
+      },
+      size: {
+        default: "min-h-12 px-6 py-3",
+        sm: "min-h-9 px-4 py-2 text-xs",
+        icon: "size-10 p-0",
+      },
+    },
+    defaultVariants: {
+      variant: "primary",
+      size: "default",
+    },
+  },
+);
 
-export function Button({ asChild, variant = "primary", className, ...props }: ButtonProps) {
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  };
+
+export function Button({ asChild, variant, size, className, ...props }: ButtonProps) {
   const Component = asChild ? Slot : "button";
   return (
     <Component
-      className={cx(
-        "inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-bold leading-none transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:border-line disabled:bg-[#ded9d1] disabled:text-[#8b867e] disabled:opacity-100 disabled:shadow-none disabled:hover:bg-[#ded9d1]",
-        variant === "primary" && "border border-ink bg-ink text-paper hover:border-accent hover:bg-accent",
-        variant === "secondary" && "border border-ink bg-paper text-ink hover:bg-accent-soft",
-        variant === "ghost" && "text-ink hover:bg-accent-soft hover:text-accent",
-        variant === "danger" && "border border-accent bg-accent text-white hover:bg-[#d71919]",
-        className,
-      )}
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     />
   );
@@ -46,10 +72,10 @@ export function IconButton({
   return (
     <button
       type="button"
+      data-slot="icon-button"
       aria-pressed={props["aria-pressed"] ?? active}
-      className={cx(
-        "inline-flex shrink-0 items-center justify-center rounded-xl border transition duration-150",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper",
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-xl border transition duration-150 outline-none focus-visible:ring-[3px] focus-visible:ring-accent/40",
         "disabled:cursor-not-allowed disabled:border-line disabled:bg-[#f1ede6] disabled:text-[#b3ada3]",
         size === "sm" ? "size-8" : "size-10",
         active
@@ -75,8 +101,8 @@ export function Field({
   htmlFor?: string;
 }) {
   return (
-    <div className="space-y-1">
-      <label htmlFor={htmlFor} className="block text-xs font-semibold text-ink/70">
+    <div className="space-y-1.5">
+      <label htmlFor={htmlFor} className="block text-[11px] font-bold uppercase tracking-[0.08em] text-muted">
         {label}
       </label>
       {children}
@@ -85,8 +111,23 @@ export function Field({
   );
 }
 
+/** shadcn Input recipe on Docuflow tokens: soft ring focus, invalid state via prop or aria-invalid. */
 export function TextInput({ className, invalid, ...props }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
-  return <input className={cx("form-control h-9 min-h-0 text-sm", invalid && "border-accent", className)} {...props} />;
+  return (
+    <input
+      data-slot="input"
+      className={cn(
+        "flex h-9 w-full min-w-0 rounded-[0.9rem] border border-[#bdb6ab] bg-paper px-3 py-1 text-sm text-ink transition-[color,box-shadow] outline-none",
+        "placeholder:text-muted/70 selection:bg-accent selection:text-white",
+        "focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/30",
+        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-line disabled:bg-canvas disabled:text-muted",
+        "aria-invalid:border-accent aria-invalid:ring-[3px] aria-invalid:ring-accent/25",
+        invalid && "border-accent ring-[3px] ring-accent/25",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 /**
@@ -109,29 +150,43 @@ export function Checkbox({
       ref={ref}
       type="checkbox"
       aria-label={label}
-      className={cx("size-4 shrink-0 cursor-pointer accent-accent", className)}
+      className={cn(
+        "size-4 shrink-0 cursor-pointer rounded-[4px] accent-accent",
+        "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/30",
+        className,
+      )}
       {...props}
     />
   );
 }
 
-/** A titled group with a hairline above it, so a panel reads as sections. */
+/** A titled group with a dashed hairline above it, so a panel reads as sections. */
 export function PanelSection({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border-t border-line px-4 py-3.5 first:border-t-0">
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <h3 className="text-[13px] font-bold text-ink">{title}</h3>
+    <section className="border-t border-dashed border-line px-5 py-5 first:border-t-0">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h3 className="text-[10px] font-black uppercase tracking-[0.16em] text-muted">{title}</h3>
         {aside}
       </div>
-      <div className="space-y-3">{children}</div>
+      <div className="space-y-4">{children}</div>
     </section>
   );
 }
 
+/** Native select styled like the shadcn Input, with the chevron drawn by the control itself. */
 export function SelectInput({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  // The chevron comes from CSS on the element itself; see select.form-control.
   return (
-    <select className={cx("form-control h-9 min-h-0 cursor-pointer text-sm", className)} {...props}>
+    <select
+      data-slot="select"
+      className={cn(
+        "select-chevron flex h-9 w-full min-w-0 cursor-pointer rounded-[0.9rem] border border-[#bdb6ab] bg-paper px-3 pr-9 py-1 text-sm text-ink transition-[color,box-shadow] outline-none",
+        "focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/30",
+        "disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-line disabled:bg-canvas disabled:text-muted",
+        "aria-invalid:border-accent aria-invalid:ring-[3px] aria-invalid:ring-accent/25",
+        className,
+      )}
+      {...props}
+    >
       {children}
     </select>
   );
@@ -204,17 +259,24 @@ export function RangeInput({
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; value: number; suffix?: string }) {
   const id = useId();
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={id} className="text-xs font-semibold text-ink/70">{label}</label>
-        <span className="rounded-md bg-canvas px-1.5 py-0.5 font-mono text-[11px] text-ink">{Math.round(value * 100) / 100}{suffix ?? ""}</span>
+        <label htmlFor={id} className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">{label}</label>
+        <span data-slot="slider-value" className="rounded-full bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink">{Math.round(value * 100) / 100}{suffix ?? ""}</span>
       </div>
+      {/* Native range wearing the shadcn Slider look (track + floating thumb);
+          staying native keeps the change event and tests untouched. */}
       <input
         id={id}
         type="range"
         value={value}
         aria-label={label}
-        className={cx("h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-accent", className)}
+        className={cn(
+          "h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line outline-none focus-visible:ring-[3px] focus-visible:ring-accent/30",
+          "[&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-line [&::-webkit-slider-thumb]:bg-paper [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(23,23,19,.4)] [&::-webkit-slider-thumb]:transition-colors hover:[&::-webkit-slider-thumb]:bg-accent-soft",
+          "[&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-line [&::-moz-range-thumb]:bg-paper [&::-moz-range-thumb]:shadow-[0_1px_3px_rgba(23,23,19,.4)]",
+          className,
+        )}
         {...props}
       />
     </div>
@@ -224,21 +286,29 @@ export function RangeInput({
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cx("rounded-[1.75rem] border border-line bg-paper shadow-[0_1px_0_rgba(23,23,19,0.04)]", className)}
+      data-slot="card"
+      className={cn("rounded-[1.75rem] border border-line bg-paper text-ink shadow-[0_1px_0_rgba(23,23,19,0.04)]", className)}
       {...props}
     />
   );
 }
 
-export function Tooltip({ children, content }: { children: ReactNode; content: ReactNode }) {
+export function Tooltip({ children, content, side = "top" }: {
+  children: ReactNode;
+  content: ReactNode;
+  /** Which edge of the trigger the bubble appears on. Vertical rails want "right". */
+  side?: "top" | "right" | "bottom" | "left";
+}) {
   return (
     <TooltipPrimitive.Provider delayDuration={250}>
       <TooltipPrimitive.Root>
         <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
         <TooltipPrimitive.Portal>
           <TooltipPrimitive.Content
+            side={side}
             sideOffset={6}
-            className="z-[200] max-w-72 rounded-xl bg-ink px-3 py-2 text-xs text-paper shadow-xl"
+            data-slot="tooltip-content"
+            className="z-[200] max-w-72 rounded-lg bg-ink px-3 py-1.5 text-xs text-paper shadow-md"
           >
             {content}
             <TooltipPrimitive.Arrow className="fill-ink" />
@@ -276,10 +346,15 @@ export function ConfirmDialog({
     }}>
       <AlertDialogPrimitive.Portal>
         <AlertDialogPrimitive.Overlay
+          data-slot="alert-dialog-overlay"
           className="bg-ink/65 backdrop-blur-[2px] data-[state=closed]:opacity-0 data-[state=open]:opacity-100"
           style={{ position: "fixed", inset: 0, zIndex: 2147483646 }}
         />
         <AlertDialogPrimitive.Content
+          data-slot="alert-dialog-content"
+          // Inline centering/z-index is deliberate: the documents-page test
+          // guards against the past "dialog rendered under the table" bug and
+          // must not depend on app CSS being loaded.
           className="w-[calc(100%-2rem)] max-w-md rounded-[2rem] border border-ink bg-paper p-6 shadow-[8px_8px_0_#ff2d2d] focus:outline-none sm:p-7"
           style={{
             position: "fixed",

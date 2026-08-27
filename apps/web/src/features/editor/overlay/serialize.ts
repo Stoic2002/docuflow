@@ -1,5 +1,5 @@
 import type { AnnotationDocument, AnnotationPage } from "@pdf-studio/api-client";
-import { type OverlayObject, isBox, isPath } from "./types";
+import { LINE_HEIGHT, type OverlayObject, isBox, isPath, textLayoutOf } from "./types";
 
 /**
  * Converts editor objects into the wire format. Both sides already use PDF
@@ -20,10 +20,14 @@ export function toAnnotationDocument(objects: OverlayObject[]): AnnotationDocume
   for (const object of objects) {
     const page = pageFor(object.page);
     if (object.kind === "text") {
-      page.texts?.push({
-        text: object.text,
+      // A wrapped box is drawn as one text per line, each on its own baseline:
+      // the engine places runs, it does not reflow them, and the browser has
+      // already measured the breaks with the very face that will be embedded.
+      const lines = textLayoutOf(object).lines;
+      lines.forEach((line, index) => page.texts?.push({
+        text: line,
         x: object.x,
-        y: object.y,
+        y: object.y - index * object.fontSize * LINE_HEIGHT,
         fontSize: object.fontSize,
         ...(object.font ? { font: object.font } : {}),
         color: object.color,
@@ -34,7 +38,7 @@ export function toAnnotationDocument(objects: OverlayObject[]): AnnotationDocume
         ...(object.italic ? { italic: true } : {}),
         ...(object.underline ? { underline: true } : {}),
         ...(object.strikethrough ? { strikethrough: true } : {}),
-      });
+      }));
       continue;
     }
     if (isBox(object)) {

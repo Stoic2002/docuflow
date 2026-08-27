@@ -1,4 +1,4 @@
-import type { PDFDocumentLoadingTask, PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
 export type PdfCapability =
   | "view"
@@ -49,7 +49,19 @@ export type PdfTextRun = {
   /** Em fractions from the font's own metrics, used to size the patch. */
   ascent: number;
   descent: number;
+  /**
+   * The face the fragment was printed in: its PostScript name where the file
+   * says so, and a generic ("sans-serif", "serif", "monospace") only when the
+   * font could not be identified.
+   */
   fontFamily: string;
+  /**
+   * Emphasis as the font object declares it. Present only when PDF.js was
+   * asked for extra font properties; otherwise the name is the only clue and
+   * these stay undefined rather than claiming "not bold".
+   */
+  bold?: boolean;
+  italic?: boolean;
 };
 
 export interface ViewablePdfEngine extends PdfEngine {
@@ -75,6 +87,14 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
   private objectUrl?: string;
   private loadingTask?: PDFDocumentLoadingTask;
   private document?: PDFDocumentProxy;
+  private renderTasks = new Set<RenderTask>();
+  /**
+   * Whether a new render replaces the one already running. Off by default
+   * because a shared engine draws many thumbnails at once and each of them
+   * must finish; an engine that only ever paints one viewport turns it on so a
+   * superseded render stops decoding instead of competing for the main thread.
+   */
+  protected supersedeRenders = false;
 
   async load(source: ArrayBuffer | string): Promise<void> {
     await this.destroy();
@@ -161,7 +181,12 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
   async getTextRuns(pageNumber: number): Promise<PdfTextRun[]> {
     if (!this.document) return [];
     const page = await this.document.getPage(pageNumber);
-    const content = await page.getTextContent();
+    // getTextContent reports only a fallback family — "sans-serif" for every
+    // face on the page — because that is all a text layer needs. The real name
+    // and the emphasis live on the font object, which is registered while the
+    // content stream is parsed, so the operator list is pulled first. PDF.js
+    // caches it, and the render that follows reuses the same parse.
+    const [content] = await Promise.all([page.getTextContent(), page.getOperatorList()]);
     const runs: PdfTextRun[] = [];
     for (const item of content.items) {
       if (!("str" in item) || item.str.trim() === "") continue;
@@ -169,6 +194,9 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
       const fontSize = Math.hypot(skewY, scaleYRaw);
       if (fontSize <= 0 || item.width <= 0) continue;
       const style = content.styles?.[item.fontName];
+      const font = page.commonObjs.has(item.fontName)
+        ? (page.commonObjs.get(item.fontName) as { name?: string; bold?: boolean; italic?: boolean; black?: boolean } | null)
+        : null;
       runs.push({
         text: item.str,
         x,
@@ -179,7 +207,13 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
         // Fall back to typical Latin proportions when the font omits metrics.
         ascent: style?.ascent && style.ascent > 0 ? style.ascent : 0.83,
         descent: style?.descent ? Math.abs(style.descent) : 0.22,
-        fontFamily: style?.fontFamily ?? "sans-serif",
+        fontFamily: font?.name || style?.fontFamily || "sans-serif",
+        // Only when the flags are really there: an absent flag means unknown,
+        // and reporting it as false would overrule what the name says.
+        ...(typeof font?.bold === "boolean" || typeof font?.black === "boolean"
+          ? { bold: Boolean(font.bold || font.black) }
+          : {}),
+        ...(typeof font?.italic === "boolean" ? { italic: font.italic } : {}),
       });
     }
     return runs;
@@ -207,14 +241,30 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
 
   async renderPageAtScale(pageNumber: number, canvas: HTMLCanvasElement, scale: number): Promise<void> {
     if (!this.document) throw new Error("PDF structure is unavailable");
+    if (this.supersedeRenders) this.cancelRenders();
     const page = await this.document.getPage(pageNumber);
     const viewport = page.getViewport({ scale });
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
-    await page.render({ canvas, viewport }).promise;
+    const task = page.render({ canvas, viewport });
+    this.renderTasks.add(task);
+    try {
+      // A cancelled task rejects; callers already treat a failed render as
+      // "nothing to blit", which is exactly right for one that was superseded.
+      await task.promise;
+    } finally {
+      this.renderTasks.delete(task);
+    }
+  }
+
+  /** Stops every render still in flight. Their promises reject as cancelled. */
+  protected cancelRenders(): void {
+    for (const task of this.renderTasks) task.cancel();
+    this.renderTasks.clear();
   }
 
   async destroy(): Promise<void> {
+    this.cancelRenders();
     await this.loadingTask?.destroy();
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.loadingTask = undefined;
@@ -230,6 +280,10 @@ export class FallbackViewerEngine implements ViewablePdfEngine {
  * describe edits but cannot produce edited PDF bytes on its own.
  */
 export class OverlayEditorEngine extends FallbackViewerEngine {
+  // The editor paints one viewport, and a zoom gesture asks for a fresh render
+  // before the previous one has finished. The stale one is discarded anyway, so
+  // it is cancelled rather than left decoding.
+  protected override supersedeRenders = true;
   private dirty = false;
 
   markDirty(dirty: boolean): void {

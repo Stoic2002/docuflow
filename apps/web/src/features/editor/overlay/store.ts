@@ -35,6 +35,10 @@ type OverlayState = {
   /** Which page the viewport shows, and at what scale. */
   page: number;
   zoom: number;
+  /** Characters selected inside the canvas text editor, when any are. */
+  textRange: { id: string; start: number; end: number } | null;
+  /** Bumped when objects are swapped wholesale, so the editor can stand down. */
+  revision: number;
 
   setPage: (page: number) => void;
   setZoom: (zoom: number) => void;
@@ -44,6 +48,9 @@ type OverlayState = {
   /** Adds several objects as one history step, e.g. a cover plus its replacement text. */
   addMany: (objects: OverlayObject[]) => boolean;
   update: (id: string, patch: Partial<OverlayObject>, options?: { history?: boolean }) => void;
+  /** Swaps one object for the several it was cut into, in its own place in the stack. */
+  replace: (id: string, objects: OverlayObject[]) => boolean;
+  setTextRange: (range: { id: string; start: number; end: number } | null) => void;
   move: (id: string, deltaX: number, deltaY: number) => void;
   remove: (id: string) => void;
   duplicate: (id: string) => void;
@@ -67,6 +74,8 @@ const empty = {
   lastLimit: null,
   page: 1,
   zoom: 1,
+  textRange: null,
+  revision: 0,
 };
 
 function pushHistory(past: OverlayObject[][], objects: OverlayObject[]): OverlayObject[][] {
@@ -144,10 +153,37 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
       ),
     })),
 
-  move: (id, deltaX, deltaY) =>
+  setTextRange: (textRange) => set({ textRange }),
+
+  replace: (id, next) => {
+    const { objects } = get();
+    const index = objects.findIndex((object) => object.id === id);
+    if (index === -1 || next.length === 0) return false;
+    const onPage = objects.filter((item) => item.page === next[0].page).length;
+    if (onPage - 1 + next.length > MAX_OBJECTS_PER_PAGE) {
+      set({ lastLimit: "page" });
+      return false;
+    }
     set((state) => ({
+      past: pushHistory(state.past, state.objects),
+      future: [],
+      objects: [...state.objects.slice(0, index), ...next, ...state.objects.slice(index + 1)],
+      selectedId: next.some((object) => object.id === id) ? id : next[0].id,
+      textRange: null,
+      revision: state.revision + 1,
+      lastLimit: null,
+    }));
+    return true;
+  },
+
+  move: (id, deltaX, deltaY) =>
+    set((state) => {
+      // Pinned patches stay put: they hide printed text at a fixed spot, and
+      // dragging them along would uncover it.
+      const ids = new Set(memberIds(state.objects, id));
+      return {
       objects: state.objects.map((object) => {
-        if (object.id !== id) return object;
+        if (!ids.has(object.id) || object.pinned) return object;
         if (isPath(object)) {
           return { ...object, points: object.points.map((point) => ({ x: point.x + deltaX, y: point.y + deltaY })) };
         }
@@ -156,55 +192,68 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
         }
         return { ...object, x: object.x + deltaX, y: object.y + deltaY };
       }),
-    })),
+      };
+    }),
 
   duplicate: (id) =>
     set((state) => {
-      const source = state.objects.find((object) => object.id === id);
-      if (!source) return state;
-      // Offset the copy so it does not hide exactly behind the original.
+      const group = state.objects.filter((object) => memberIds(state.objects, id).includes(object.id));
+      // A copy of a patch would hide whatever sits under the copy, so only the
+      // replacement travels — unless the patch is all there is.
+      const movable = group.filter((object) => !object.pinned);
+      const members = movable.length > 0 ? movable : group;
+      if (members.length === 0) return state;
+      // Offset the copies so they do not hide exactly behind the originals.
       const shift = 12;
-      const moved = isPath(source)
-        ? { ...source, points: source.points.map((point) => ({ x: point.x + shift, y: point.y - shift })) }
-        : source.kind === "image"
-          ? { ...source, centerX: source.centerX + shift, centerY: source.centerY - shift }
-          : { ...source, x: source.x + shift, y: source.y - shift };
-      const copy = { ...moved, id: crypto.randomUUID() } as OverlayObject;
+      const groupId = members.length > 1 ? crypto.randomUUID() : undefined;
+      const copies = members.map((source) => {
+        const moved = isPath(source)
+          ? { ...source, points: source.points.map((point) => ({ x: point.x + shift, y: point.y - shift })) }
+          : source.kind === "image"
+            ? { ...source, centerX: source.centerX + shift, centerY: source.centerY - shift }
+            : { ...source, x: source.x + shift, y: source.y - shift };
+        return { ...moved, id: crypto.randomUUID(), groupId } as OverlayObject;
+      });
       return {
         past: pushHistory(state.past, state.objects),
         future: [],
-        objects: [...state.objects, copy],
+        objects: [...state.objects, ...copies],
         // A duplicated image points at the same file, which stays referenced.
-        selectedId: copy.id,
+        selectedId: copies[copies.length - 1].id,
       };
     }),
 
   bringToFront: (id) =>
     set((state) => {
-      const target = state.objects.find((object) => object.id === id);
-      if (!target) return state;
+      const ids = new Set(memberIds(state.objects, id));
+      if (ids.size === 0) return state;
+      // Group members travel together and keep their internal paint order.
+      const members = state.objects.filter((object) => ids.has(object.id));
       return {
         past: pushHistory(state.past, state.objects),
         future: [],
-        objects: [...state.objects.filter((object) => object.id !== id), target],
+        objects: [...state.objects.filter((object) => !ids.has(object.id)), ...members],
       };
     }),
 
   sendToBack: (id) =>
     set((state) => {
-      const target = state.objects.find((object) => object.id === id);
-      if (!target) return state;
+      const ids = new Set(memberIds(state.objects, id));
+      if (ids.size === 0) return state;
+      const members = state.objects.filter((object) => ids.has(object.id));
       return {
         past: pushHistory(state.past, state.objects),
         future: [],
-        objects: [target, ...state.objects.filter((object) => object.id !== id)],
+        objects: [...members, ...state.objects.filter((object) => !ids.has(object.id))],
       };
     }),
 
   remove: (id) =>
     set((state) => {
+      const ids = new Set(memberIds(state.objects, id));
+      if (ids.size === 0) return state;
       const target = state.objects.find((object) => object.id === id);
-      const objects = state.objects.filter((object) => object.id !== id);
+      const objects = state.objects.filter((object) => !ids.has(object.id));
       const assets = { ...state.assets };
       // Drop the file only once nothing else points at it.
       if (target?.kind === "image" && !objects.some((object) => object.kind === "image" && object.asset === target.asset)) {
@@ -215,7 +264,7 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
         future: [],
         objects,
         assets,
-        selectedId: state.selectedId === id ? null : state.selectedId,
+        selectedId: ids.has(state.selectedId ?? "") ? null : state.selectedId,
       };
     }),
 
@@ -266,6 +315,27 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
 
 export function objectsOnPage(objects: OverlayObject[], page: number): OverlayObject[] {
   return objects.filter((object) => object.page === page);
+}
+
+/**
+ * A retype pair (patch + replacement text) acts as one selectable unit.
+ * An id nothing matches yields no members at all, so callers that guard on an
+ * empty result stay no-ops instead of recording an edit that changed nothing.
+ */
+function memberIds(objects: OverlayObject[], id: string): string[] {
+  const target = objects.find((object) => object.id === id);
+  if (!target) return [];
+  if (!target.groupId) return [id];
+  const ids = objects.filter((object) => object.groupId === target.groupId).map((object) => object.id);
+  return ids.length > 0 ? ids : [id];
+}
+
+/** The movable object a click should act on: a patch hands over to its replacement. */
+export function pickAt(objects: OverlayObject[], page: number, x: number, y: number): OverlayObject | null {
+  const hit = hitTest(objects, page, x, y);
+  if (!hit?.pinned || !hit.groupId) return hit;
+  const replacement = objects.find((object) => object.groupId === hit.groupId && !object.pinned);
+  return replacement ?? hit;
 }
 
 /** Topmost object whose bounds contain the point, so clicks pick what is drawn last. */

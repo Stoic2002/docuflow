@@ -185,6 +185,33 @@ paths:
                         file: { type: string }
                         reason: { type: string }
         default: { $ref: "#/components/responses/Error" }
+  /fonts/{fontId}/file:
+    get:
+      operationId: getFontFile
+      description: >-
+        Returns the TrueType program of one registered font, so an editor can
+        preview and measure text with the very face the export will embed
+        rather than whatever the reader has installed. Only ids from
+        /fonts resolve; everything else is a 404.
+      parameters:
+        - name: fontId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The font program
+          headers:
+            ETag:
+              description: Changes when the registry is rebuilt with a different file.
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string }
+          content:
+            font/ttf:
+              schema: { type: string, format: binary }
+        "304": { description: The cached copy is still current }
+        default: { $ref: "#/components/responses/Error" }
   /documents/trash:
     get:
       operationId: listTrash

@@ -158,9 +158,13 @@ Original tidak pernah ditimpa; hasilnya selalu menjadi versi baru.
 
 `GET /api/fonts` menampilkan font TrueType yang dapat di-embed. Backend memindai direktori `FONT_DIR` (default `assets/fonts`) saat start.
 
-Repo ini menyertakan **61 file `.ttf` berlisensi SIL OFL 1.1 atau Apache 2.0**, mencakup keluarga sans, serif, monospace, display, dan script:
+`GET /api/fonts/{fontId}/file` mengirim program TrueType-nya sendiri. Editor memuatnya sebagai web font, sehingga **preview dan pengukuran teks di browser memakai face yang sama persis dengan yang di-embed saat export** — bukan menebak dengan font yang kebetulan terpasang di mesin pengguna. Ini yang membuat kotak seleksi, grip, dan posisi caret akurat. Hanya id yang ada di `/api/fonts` yang bisa diakses, jadi pemeriksaan `fsType` dan lisensi yang sudah dilakukan registry tetap berlaku, dan tidak ada jalur ke filesystem. Respons memakai `ETag` plus `Cache-Control: public, max-age=86400`, dan hanya font yang benar-benar dipakai dokumen yang diunduh — bukan seratusnya.
 
-Bebas Neue, EB Garamond, Great Vibes, Inter, JetBrains Mono, Lato, Liberation Mono, Liberation Sans, Liberation Serif, Lora, Merriweather, Montserrat, Open Sans, Oswald, Pacifico, Poppins, Roboto, Roboto Mono, Source Code Pro.
+Repo ini menyertakan **100 file `.ttf`** — SIL OFL 1.1 dan Apache 2.0, plus GUST Font License untuk keluarga Computer Modern — mencakup keluarga sans, serif, monospace, display, dan script:
+
+Arimo, Bebas Neue, Caladea, Carlito, CMU Serif, CMU Typewriter, EB Garamond, Gelasio, Great Vibes, Inter, JetBrains Mono, Lato, Libre Baskerville, Liberation Mono, Liberation Sans, Liberation Serif, Lora, Merriweather, Montserrat, Open Sans, Oswald, Pacifico, Poppins, PT Serif, Roboto, Roboto Mono, Shippori Mincho, Source Code Pro, Source Serif 4, Tinos.
+
+Keluarga Tinos/Arimo/Carlito/Caladea/Gelasio sengaja disertakan sebagai pengganti bebas yang metriknya kompatibel dengan Times New Roman, Arial, Calibri, Cambria, dan Georgia — kebutuhan umum format akademik dan CV; font proprietary aslinya tidak boleh didistribusikan bersama repo. Panel editor memetakan nama PostScript yang umum di dokumen (mis. `ArialMT`, `TimesNewRomanPSMT`, `MS-PMincho`) langsung ke penggantinya dan menandainya `→ NamaPengganti`. Rincian lisensi tiap keluarga ada di `assets/fonts/LICENSES.md`.
 
 Sebagian besar keluarga disertakan lengkap dengan gaya tebal, miring, dan tebal-miringnya. Keluarga Liberation penting secara khusus karena metriknya kompatibel dengan Arial, Times New Roman, dan Courier New — lebar tiap karakternya sama persis, sehingga teks pengganti pada alur cover & retype menempati ruang yang sama dengan teks aslinya dan tata letak halaman tidak bergeser.
 

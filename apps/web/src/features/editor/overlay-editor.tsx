@@ -11,11 +11,15 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { capabilitiesQuery, documentFontsQuery, editSessionQuery, fontsQuery, queryKeys } from "../../api/queries";
 import { ErrorState, LoadingState } from "../../components/async-state";
 import { EditorCanvas } from "./overlay/editor-canvas";
-import { PropertiesPanel } from "./overlay/properties-panel";
+import { HistoryControls } from "./overlay/history-controls";
+import { PropertiesBar } from "./overlay/properties-bar";
+import { aliasFamilyFor } from "./overlay/retype";
 import { toAnnotationDocument, usedAssets } from "./overlay/serialize";
 import { clampZoom, useOverlayStore } from "./overlay/store";
+import { fromEditorChrome } from "./overlay/keyboard";
 import { EditorToolbar } from "./overlay/toolbar";
 import { DEFAULT_STROKE_COLOR, MAX_ASSETS } from "./overlay/types";
+import { canvasPads, initialScroll, scrollForZoom } from "./overlay/viewport";
 
 /** Loose match so a subset tag or a weight suffix still counts as installed. */
 function matchesRegistered(name: string, fonts: { family: string }[]): boolean {
@@ -47,7 +51,9 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
   const [result, setResult] = useState<DirectToolResult>();
   const [notice, setNotice] = useState<string | null>(null);
   const [showHints, setShowHints] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
+  // On narrow viewports the open panel would cover the whole canvas, so it
+  // starts closed there and the header toggle brings it up on demand.
+  const [panelOpen, setPanelOpen] = useState(() => window.innerWidth >= 1024);
   const scrollRef = useRef<HTMLDivElement>(null);
   const detachWheel = useRef<(() => void) | null>(null);
 
@@ -131,7 +137,12 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
 
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
-  const zoomAnchor = useRef<{ x: number; y: number; factor: number } | null>(null);
+
+  // Measured so the page gets half a viewport of empty travel on every side:
+  // that is what makes dragging the paper feel free instead of clamped.
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  // Set by a pinch, in container coordinates; cleared once the zoom is applied.
+  const zoomAnchor = useRef<{ x: number; y: number } | null>(null);
 
   // A callback ref, not an effect: this component returns early while the
   // session loads, so an effect keyed on stable deps would run once against a
@@ -141,32 +152,88 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
     detachWheel.current = null;
     scrollRef.current = container;
     if (!container) return;
+    // A trackpad fires wheel events faster than the browser paints, so the
+    // steps are coalesced into one state change per frame; without that every
+    // event re-rendered the whole editor and the pinch felt heavy.
+    let frame = 0;
+    const pending = { zoom: 0, clientX: 0, clientY: 0, queued: false };
     const onWheel = (event: WheelEvent) => {
       // A plain two-finger swipe keeps scrolling the page; only a pinch zooms.
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      const current = zoomRef.current;
+      const current = pending.queued ? pending.zoom : zoomRef.current;
       const next = clampZoom(current * Math.exp(-event.deltaY / 180));
       if (Math.abs(next - current) < 0.0005) return;
-      const rect = container.getBoundingClientRect();
-      zoomAnchor.current = { x: event.clientX - rect.left, y: event.clientY - rect.top, factor: next / current };
-      setZoom(next);
+      pending.zoom = next;
+      pending.clientX = event.clientX;
+      pending.clientY = event.clientY;
+      pending.queued = true;
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        if (!pending.queued) return;
+        pending.queued = false;
+        // Read the box once per frame, not once per event.
+        const rect = container.getBoundingClientRect();
+        zoomAnchor.current = { x: pending.clientX - rect.left, y: pending.clientY - rect.top };
+        setZoom(pending.zoom);
+      });
     };
     container.addEventListener("wheel", onWheel, { passive: false });
-    detachWheel.current = () => container.removeEventListener("wheel", onWheel);
+    const observer = new ResizeObserver(() => {
+      setViewportSize({ width: container.clientWidth, height: container.clientHeight });
+    });
+    observer.observe(container);
+    setViewportSize({ width: container.clientWidth, height: container.clientHeight });
+    detachWheel.current = () => {
+      container.removeEventListener("wheel", onWheel);
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [setZoom]);
 
   useEffect(() => () => detachWheel.current?.(), []);
 
-  // Keep whatever sat under the cursor in place once the new size is laid out.
+  // Whatever sits under this point stays put across a zoom step: the pointer
+  // during a pinch, and the middle of the viewport for the toolbar buttons.
+  // The compensation must scale about the PAGE origin (which sits at the
+  // constant padding offset inside the scroller), not about the wrapper origin
+  // — padding itself does not grow with zoom, and ignoring that term is what
+  // made the view slide while pinching. Same lesson as excalidraw's
+  // getViewportForZoom.
+  const committedZoomRef = useRef(zoom);
   useLayoutEffect(() => {
     const container = scrollRef.current;
+    const factor = zoom / committedZoomRef.current;
+    committedZoomRef.current = zoom;
     const anchor = zoomAnchor.current;
-    if (!container || !anchor) return;
     zoomAnchor.current = null;
-    container.scrollLeft = (container.scrollLeft + anchor.x) * anchor.factor - anchor.x;
-    container.scrollTop = (container.scrollTop + anchor.y) * anchor.factor - anchor.y;
+    if (!container || Math.abs(factor - 1) < 0.0001) return;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const next = scrollForZoom(
+      { left: container.scrollLeft, top: container.scrollTop },
+      canvasPads(width, height),
+      anchor ?? { x: width / 2, y: height / 2 },
+      factor,
+    );
+    container.scrollLeft = next.left;
+    container.scrollTop = next.top;
   }, [zoom]);
+
+  // The scroller starts at the top-left of the empty travel around the page,
+  // which put the paper down and to the right on open. Once the page size and
+  // the viewport are both known, the view is placed on the page itself — once,
+  // so it never fights the reader's own scrolling afterwards.
+  const centred = useRef(false);
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (!container || centred.current || !pageSize || viewportSize.width === 0) return;
+    const start = initialScroll(pageSize, viewportSize, zoom);
+    container.scrollLeft = start.left;
+    container.scrollTop = start.top;
+    centred.current = true;
+  }, [pageSize, viewportSize, zoom]);
 
   const panBy = useCallback((deltaX: number, deltaY: number) => {
     scrollRef.current?.scrollBy({ left: deltaX, top: deltaY });
@@ -204,9 +271,12 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (fromEditorChrome(event)) return;
       if ((event.key === "Delete" || event.key === "Backspace") && selectedId) {
+        // Backspace on a selected text object belongs to type-through editing
+        // (the canvas deletes one character); it must not delete the object.
+        const selected = objects.find((object) => object.id === selectedId);
+        if (event.key === "Backspace" && selected?.kind === "text") return;
         event.preventDefault();
         remove(selectedId);
         return;
@@ -219,7 +289,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, remove, undo, redo]);
+  }, [objects, selectedId, remove, undo, redo]);
 
   if (session.isPending || capabilities.isPending) return <main className="page-shell py-10"><LoadingState label="Membuka editor…" /></main>;
   if (session.isError) return <main className="page-shell py-10"><ErrorState error={session.error} /></main>;
@@ -256,6 +326,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <HistoryControls disabled={!canAnnotate || busy} />
           <div className="flex items-center gap-1 rounded-2xl border border-line bg-paper px-1 py-1">
             <IconButton size="sm" className="border-transparent bg-transparent" onClick={() => setZoom(zoom - 0.15)} aria-label="Perkecil"><Minus className="size-4" /></IconButton>
             <Tooltip content="Cubit dua jari di trackpad, atau Ctrl + scroll, untuk zoom ke titik kursor">
@@ -286,7 +357,13 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
       <div className="relative min-h-0 flex-1">
         <div ref={attachScroll} className="h-full overflow-auto bg-canvas">
           <div
-            className="flex min-h-full w-max min-w-full cursor-grab items-center justify-center px-24 py-6 active:cursor-grabbing"
+            className="flex min-h-full w-max min-w-full cursor-grab items-center justify-center active:cursor-grabbing"
+            style={{
+              paddingLeft: canvasPads(viewportSize.width, viewportSize.height).x,
+              paddingRight: canvasPads(viewportSize.width, viewportSize.height).x,
+              paddingTop: canvasPads(viewportSize.width, viewportSize.height).y,
+              paddingBottom: canvasPads(viewportSize.width, viewportSize.height).y,
+            }}
             onPointerDown={onBackdropPointerDown}
             onPointerMove={onBackdropPointerMove}
             onPointerUp={onBackdropPointerUp}
@@ -311,22 +388,25 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
           </div>
         </div>
 
-        <div className="absolute left-3 top-3 z-10">
+        <div className="absolute left-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)]">
           <EditorToolbar onPickImage={insertImage} disabled={!canAnnotate || busy} showHints={showHints} onToggleHints={setShowHints} />
         </div>
 
-        {message ? (
-          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-24">
+        {/* One column above the page: the contextual bar first, then whatever
+            the editor needs to say. Both float clear of the tool rail. */}
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex flex-col items-center gap-2 px-4 sm:px-24">
+          <PropertiesBar fonts={fonts} fontsAvailable={fonts.length > 0} />
+          {message ? (
             <p
               className="pointer-events-auto max-w-xl rounded-full border border-line bg-paper/95 px-4 py-2 text-xs font-semibold leading-5 text-ink shadow-[0_4px_16px_rgba(23,23,19,.12)] backdrop-blur"
               role="status"
             >
               {message}
             </p>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-ink bg-paper/95 px-2 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,.12)] backdrop-blur">
             <IconButton size="sm" className="border-transparent bg-transparent" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Halaman sebelumnya"><ChevronLeft className="size-4" /></IconButton>
             <span className="text-xs font-bold text-ink">{page} / {pageCount || "…"}</span>
@@ -335,7 +415,7 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
         </div>
 
         {panelOpen ? (
-          <aside className="absolute right-3 top-3 flex max-h-[calc(100%-1.5rem)] w-[19rem] flex-col overflow-y-auto rounded-2xl border border-line bg-paper shadow-[0_6px_24px_rgba(23,23,19,.10)]">
+          <aside data-editor-chrome className="absolute right-3 top-3 z-40 flex max-h-[calc(100%-1.5rem)] w-[min(20rem,calc(100vw-1.5rem))] flex-col overflow-y-auto rounded-2xl border border-line bg-paper shadow-[0_6px_24px_rgba(23,23,19,.10)]">
             {textLayer === "absent" ? (
               <PanelSection title="Halaman ini hasil scan">
                 <p className="text-xs leading-5 text-muted">
@@ -344,8 +424,6 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
                 <Button asChild className="w-full"><Link to="/ocr">Buka OCR</Link></Button>
               </PanelSection>
             ) : null}
-
-            <PropertiesPanel fonts={fonts} fontsAvailable={fonts.length > 0} />
 
             <PanelSection title="Warna untuk objek baru">
               <ColorInput label="Warna untuk objek baru" value={activeColor} onChange={setActiveColor} />
@@ -359,19 +437,31 @@ export function OverlayEditor({ sessionId }: { sessionId: string }) {
                 <ul className="space-y-1.5">
                   {documentFonts.data.fonts.map((font) => {
                     const installed = matchesRegistered(font.name, fonts);
+                    const alias = installed ? null : aliasFamilyFor(font.name);
                     return (
                       <li key={`${font.name}-${font.type}`} className="flex items-center justify-between gap-2">
                         <span className="min-w-0 truncate text-xs text-ink" title={font.name}>{font.name}</span>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${installed ? "bg-emerald-100 text-emerald-800" : "bg-canvas text-muted"}`}>
-                          {installed ? "terpasang" : "belum ada"}
+                        <span
+                          title={alias ? `Ditangani oleh pengganti metrik: ${alias}` : undefined}
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            installed
+                              ? "bg-emerald-100 text-emerald-800"
+                              : alias
+                                ? "bg-accent-soft text-accent"
+                                : "bg-canvas text-muted"
+                          }`}
+                        >
+                          {installed ? "terpasang" : alias ? `→ ${alias}` : "belum ada"}
                         </span>
                       </li>
                     );
                   })}
                 </ul>
                 <p className="text-[11px] leading-4 text-muted">
-                  Yang bertanda <b>belum ada</b> tidak bisa dipakai untuk teks pengganti; Docuflow memilih font terdekat yang tersedia.
-                  Salin file <code className="font-mono">.ttf</code>-nya ke <code className="font-mono">assets/fonts/</code> lalu jalankan ulang API.
+                  Font proprietary tidak bisa disertakan di repo, jadi yang bertanda <b>→</b> otomatis memakai
+                  pengganti bebas bermetrik identik (Times→Tinos, Arial→Arimo, Calibri→Carlito, PMincho→Shippori Mincho).
+                  Yang bertanda <b>belum ada</b> memakai font terdekat; salin file <code className="font-mono">.ttf</code>-nya
+                  ke <code className="font-mono">assets/fonts/</code> lalu jalankan ulang API untuk memakainya langsung.
                 </p>
               </PanelSection>
             ) : null}

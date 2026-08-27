@@ -77,36 +77,53 @@ select {
   border-top: 1px dashed #c6bfb4;
 }
 
-.form-control {
-  min-height: 2.75rem;
-  width: 100%;
-  border: 1px solid #bdb6ab;
-  border-radius: 0.9rem;
-  background: #fffdf8;
-  padding-inline: 0.875rem;
-  color: #171713;
-}
-
-.form-control:focus-visible {
-  border-color: #ff2d2d;
-  outline: 2px solid rgb(255 45 45 / 24%);
-  outline-offset: 2px;
-}
-
 /*
- * The chevron is drawn by the control itself rather than by a sibling element,
- * so a browser that still paints its own arrow cannot leave two of them.
+ * Component classes live in the components layer so Tailwind utilities can
+ * override them: unlayered CSS would beat every utility, which is why h-9
+ * inputs silently rendered at the 44px min-height instead of 36px.
  */
-select.form-control {
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 2.25rem;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%236b6459' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 0.75rem;
-}
+@layer components {
+  .form-control {
+    min-height: 2.75rem;
+    width: 100%;
+    border: 1px solid #bdb6ab;
+    border-radius: 0.9rem;
+    background: #fffdf8;
+    padding-inline: 0.875rem;
+    color: #171713;
+  }
 
-select.form-control::-ms-expand {
-  display: none;
+  .form-control:focus-visible {
+    border-color: #ff2d2d;
+    outline: 2px solid rgb(255 45 45 / 24%);
+    outline-offset: 2px;
+  }
+
+  /*
+   * The chevron is drawn by the control itself rather than by a sibling element,
+   * so a browser that still paints its own arrow cannot leave two of them.
+   */
+  select.form-control {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%236b6459' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 0.75rem;
+  }
+
+  select.form-control::-ms-expand {
+    display: none;
+  }
+
+  /* Chevron for the shadcn-styled SelectInput in @pdf-studio/ui. */
+  .select-chevron {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%236b6459' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 0.75rem;
+  }
 }

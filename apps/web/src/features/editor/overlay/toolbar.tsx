@@ -1,7 +1,7 @@
 import { IconButton, Tooltip } from "@pdf-studio/ui";
 import {
   ArrowUpRight, Circle, Hand, Highlighter, ImagePlus, Minus, MousePointer2,
-  Pencil, Redo2, ScanLine, Square, Trash2, Type, Undo2,
+  Pencil, ScanLine, Square, Type,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useRef } from "react";
@@ -12,7 +12,7 @@ type Entry = { tool: OverlayTool; label: string; hint: string; icon: LucideIcon 
 
 const groups: Entry[][] = [
   [
-    { tool: "select", label: "Pilih", hint: "Klik elemen apa pun di halaman untuk mengambil alih dan mengeditnya. Tarik area kosong untuk menggeser halaman.", icon: MousePointer2 },
+    { tool: "select", label: "Pilih", hint: "Klik elemen apa pun di halaman untuk mengambil alih dan langsung mengetiknya. Tarik area kosong untuk menggeser halaman.", icon: MousePointer2 },
     { tool: "hand", label: "Geser halaman", hint: "Tarik untuk menggeser. Menahan Spasi memberi efek yang sama dari tool mana pun.", icon: Hand },
   ],
   [
@@ -32,7 +32,9 @@ function ToolButton({ active, label, hint, icon: Icon, disabled, onClick }: {
   active: boolean; label: string; hint: string; icon: LucideIcon; disabled: boolean; onClick: () => void;
 }) {
   return (
-    <Tooltip content={<span><b>{label}</b><br />{hint}</span>}>
+    // The rail hugs the left edge, so the bubble must open to its right;
+    // the default "top" collides with the viewport edge and the rail itself.
+    <Tooltip side="right" content={<span><b>{label}</b><br />{hint}</span>}>
       <span>
         <IconButton active={active} aria-label={label} disabled={disabled} onClick={onClick}>
           <Icon className="size-[18px]" />
@@ -59,16 +61,13 @@ export function EditorToolbar({ onPickImage, disabled, showHints, onToggleHints 
   const fileRef = useRef<HTMLInputElement>(null);
   const tool = useOverlayStore((state) => state.tool);
   const setTool = useOverlayStore((state) => state.setTool);
-  const undo = useOverlayStore((state) => state.undo);
-  const redo = useOverlayStore((state) => state.redo);
-  const remove = useOverlayStore((state) => state.remove);
-  const past = useOverlayStore((state) => state.past);
-  const future = useOverlayStore((state) => state.future);
-  const selectedId = useOverlayStore((state) => state.selectedId);
   const assetCount = useOverlayStore((state) => Object.keys(state.assets).length);
 
   return (
-    <div className="flex flex-col gap-1 rounded-2xl border border-line bg-paper/95 p-1.5 shadow-[0_6px_24px_rgba(23,23,19,.12)] backdrop-blur">
+    // Capped to the canvas area with hidden internal scrolling: on short
+    // viewports (or 100%+ browser zoom) the full rail no longer fits, and an
+    // uncapped rail used to run off the bottom edge of the screen.
+    <div data-editor-chrome className="flex max-h-[calc(100%-1.5rem)] flex-col gap-1 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-paper/95 p-1.5 shadow-[0_6px_24px_rgba(23,23,19,.12)] backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {groups.map((group, index) => (
         <div key={index} className="flex flex-col gap-1">
           {index > 0 ? <Divider /> : null}
@@ -104,19 +103,6 @@ export function EditorToolbar({ onPickImage, disabled, showHints, onToggleHints 
           if (file) onPickImage(file);
           event.target.value = "";
         }}
-      />
-
-      <Divider />
-
-      <ToolButton active={false} label="Urungkan" hint="Ctrl/Cmd + Z" icon={Undo2} disabled={disabled || past.length === 0} onClick={undo} />
-      <ToolButton active={false} label="Ulangi" hint="Ctrl/Cmd + Shift + Z" icon={Redo2} disabled={disabled || future.length === 0} onClick={redo} />
-      <ToolButton
-        active={false}
-        label="Hapus objek terpilih"
-        hint="Delete"
-        icon={Trash2}
-        disabled={disabled || !selectedId}
-        onClick={() => selectedId && remove(selectedId)}
       />
 
       <Divider />
